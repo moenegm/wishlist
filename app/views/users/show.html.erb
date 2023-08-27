@@ -1,6 +1,12 @@
 </br>
 <div class="container">
     <div class="row text-center">
+        <div class="col justify-content-center"> 
+            <%= check_avatar(@user) %>
+        </div>
+    </div>
+
+    <div class="row text-center">
         <div class="col mb-4"> 
             <%= name(@user.id) %>
         </div>
@@ -9,7 +15,7 @@
     <% if user_signed_in? && @user.id == current_user.id%>
         <div class="row justify-content-start">
             <div class="col">   
-                <%= button_to 'Edit Personal Information', edit_user_registration_path(current_user), class:"btn btn-secondary mb-3" %>
+                <%= link_to 'Edit Personal Information', edit_user_registration_path(current_user), class:"btn btn-secondary mb-3" %>
             </div>
         </div>
     <% end %>
