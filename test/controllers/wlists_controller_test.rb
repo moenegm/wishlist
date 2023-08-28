@@ -17,7 +17,7 @@ class WlistsControllerTest < ActionDispatch::IntegrationTest
 
   test "should create wlist" do
     assert_difference("Wlist.count") do
-      post wlists_url, params: { wlist: { title: @wlist.title, type: @wlist.type, user_id: @wlist.user_id } }
+      post wlists_url, params: { wlist: { title: @wlist.title, type: @wlist.wl_category, user_id: @wlist.user_id } }
     end
 
     assert_redirected_to wlist_url(Wlist.last)
@@ -34,7 +34,7 @@ class WlistsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "should update wlist" do
-    patch wlist_url(@wlist), params: { wlist: { title: @wlist.title, type: @wlist.type, user_id: @wlist.user_id } }
+    patch wlist_url(@wlist), params: { wlist: { title: @wlist.title, type: @wlist.wl_category, user_id: @wlist.user_id } }
     assert_redirected_to wlist_url(@wlist)
   end
 

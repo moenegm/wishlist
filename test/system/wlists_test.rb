@@ -15,7 +15,7 @@ class WlistsTest < ApplicationSystemTestCase
     click_on "New wlist"
 
     fill_in "Title", with: @wlist.title
-    fill_in "Type", with: @wlist.type
+    fill_in "Type", with: @wlist.wl_category
     fill_in "User", with: @wlist.user_id
     click_on "Create Wlist"
 
@@ -28,7 +28,7 @@ class WlistsTest < ApplicationSystemTestCase
     click_on "Edit this wlist", match: :first
 
     fill_in "Title", with: @wlist.title
-    fill_in "Type", with: @wlist.type
+    fill_in "Type", with: @wlist.wl_category
     fill_in "User", with: @wlist.user_id
     click_on "Update Wlist"
 

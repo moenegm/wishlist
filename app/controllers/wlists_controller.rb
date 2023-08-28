@@ -65,6 +65,6 @@ class WlistsController < ApplicationController
 
     # Only allow a list of trusted parameters through.
     def wlist_params
-      params.require(:wlist).permit(:title, :user_id, :type)
+      params.require(:wlist).permit(:title, :user_id, :wl_category)
     end
 end
