@@ -1,0 +1,10 @@
+<p style="color: green"><%= notice %></p>
+
+<%= render @wlist %>
+
+<div>
+  <%= link_to "Edit this wlist", edit_wlist_path(@wlist) %> |
+  <%= link_to "Back to wlists", wlists_path %>
+
+  <%= button_to "Destroy this wlist", @wlist, method: :delete %>
+</div>

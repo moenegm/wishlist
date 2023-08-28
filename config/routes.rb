@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  resources :wlists
   resources :wishes
   devise_for :users, controllers: { registrations: 'users/registrations' }
 

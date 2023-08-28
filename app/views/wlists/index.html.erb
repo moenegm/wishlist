@@ -1,0 +1,14 @@
+<p style="color: green"><%= notice %></p>
+
+<h1>Wlists</h1>
+
+<div id="wlists">
+  <% @wlists.each do |wlist| %>
+    <%= render wlist %>
+    <p>
+      <%= link_to "Show this wlist", wlist %>
+    </p>
+  <% end %>
+</div>
+
+<%= link_to "New wlist", new_wlist_path %>
