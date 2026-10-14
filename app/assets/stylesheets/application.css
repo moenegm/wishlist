@@ -98,3 +98,81 @@ a:hover { color: var(--green-deep); }
   .page-section { padding-top: 2.25rem; }
   .site-nav .btn { margin: .4rem 0; }
 }
+
+/* A clear, welcoming introduction for signed-out visitors. */
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(350px, .92fr);
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 3.75rem);
+  width: min(100%, 1020px);
+  margin: clamp(2rem, 5vw, 4.25rem) auto;
+}
+
+.welcome-panel {
+  position: relative;
+  display: flex;
+  min-height: 590px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(1.6rem, 4vw, 3rem);
+  border: 1px solid #e3e4d9;
+  border-radius: 1.5rem;
+  background: radial-gradient(ellipse at 95% 8%, rgba(255,255,255,.78), transparent 38%), linear-gradient(145deg, #eef0e7 0%, #e7ebdf 52%, #f3e9dd 100%);
+}
+
+.welcome-panel::after {
+  position: absolute;
+  right: -6rem;
+  bottom: 6rem;
+  width: 16rem;
+  height: 16rem;
+  border: 1px solid rgba(49, 88, 75, .1);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.welcome-panel-top { display: flex; align-items: center; justify-content: space-between; }
+.welcome-kicker, .welcome-overline, .wish-preview-label { font-size: .68rem; font-weight: 750; letter-spacing: .13em; }
+.welcome-kicker { display: inline-flex; align-items: center; gap: .55rem; color: var(--green); }
+.welcome-kicker-dot { width: .45rem; height: .45rem; border-radius: 50%; background: #8d9f72; box-shadow: 0 0 0 4px rgba(141,159,114,.15); }
+.welcome-spark { color: #aa7957; font-size: 1.6rem; }
+.welcome-copy { position: relative; z-index: 1; margin: clamp(2.5rem, 6vw, 4.1rem) 0 1.8rem; }
+.welcome-overline { margin-bottom: .8rem; color: var(--peach-ink); text-transform: uppercase; }
+.welcome-copy h2 { margin: 0; color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.45rem, 4.1vw, 3.55rem); font-weight: 500; letter-spacing: -.065em; line-height: 1.04; }
+.welcome-copy h2 em { color: var(--green); font-weight: 500; }
+.welcome-description { max-width: 28rem; margin: 1.2rem 0 0; color: #68716b; font-size: .98rem; line-height: 1.75; }
+.wish-preview { position: relative; z-index: 1; width: min(100%, 340px); margin: auto 0 0 auto; padding: 1.1rem 1.2rem 1rem; border: 1px solid rgba(255,255,255,.85); border-radius: 1.1rem; background: rgba(255,255,255,.76); box-shadow: 0 15px 38px rgba(39,54,45,.08); transform: rotate(-2deg); }
+.wish-preview-heading { display: flex; align-items: center; gap: .75rem; }
+.wish-preview-icon { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .8rem; background: #f4e6db; color: var(--peach-ink); font-size: 1.1rem; }
+.wish-preview-heading>span:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: .12rem; }
+.wish-preview-label { color: #858b81; font-size: .55rem; }
+.wish-preview-heading strong { color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: 1.08rem; font-weight: 500; }
+.wish-preview-count { align-self: flex-start; color: #8a9188; font: .65rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+.wish-preview-items { display: flex; gap: .6rem; margin: 1rem 0 .8rem 3.25rem; }
+.wish-preview-items span { display: grid; width: 2.35rem; height: 2.35rem; place-items: center; border-radius: .7rem; background: #e9eee3; color: var(--green); font-size: 1rem; }
+.wish-preview-items span:nth-child(2) { background: #f4e8dd; color: #97674a; }
+.wish-preview-items span:nth-child(3) { background: #f4efd8; color: #a1843e; }
+.wish-preview-note { margin: 0 0 0 3.25rem; color: #778077; font-size: .72rem; }
+.wish-preview-note i { margin-right: .25rem; color: #b77b68; font-size: .65rem; }
+.welcome-footnote { position: relative; z-index: 1; margin: 1.8rem 0 0; color: #69756c; font-size: .77rem; }
+.welcome-footnote i { margin-right: .35rem; color: var(--green); }
+.auth-card { width: 100%; margin: 0; }
+.auth-card .brand-mark { display: none; }
+
+@media (max-width: 800px) {
+  .auth-layout { grid-template-columns: minmax(0, 1fr); max-width: 540px; gap: 1rem; }
+  .welcome-panel { min-height: auto; padding: 1.6rem; }
+  .welcome-copy { margin: 2.2rem 0 1.4rem; }
+  .welcome-copy h2 { font-size: clamp(2.3rem, 9vw, 3.3rem); }
+  .wish-preview { margin: .5rem 0 0 auto; }
+  .welcome-footnote { margin-top: 1.35rem; }
+}
+
+@media (max-width: 575.98px) {
+  .auth-layout { margin: 1.25rem auto 2.5rem; }
+  .welcome-panel { padding: 1.3rem; border-radius: 1.15rem; }
+  .welcome-description { font-size: .9rem; }
+  .auth-card { padding: 1.35rem; }
+}
