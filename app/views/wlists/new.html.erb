@@ -1,9 +1,9 @@
-<h1>New wlist</h1>
-
-<%= render "form", wlist: @wlist %>
-
-<br>
-
-<div>
-  <%= link_to "Back to wlists", wlists_path %>
-</div>
+<% content_for :title, "Create a wishlist · Wishwell" %>
+<section class="page-section">
+  <p class="eyebrow">A fresh little list</p>
+  <h1 class="page-title">Start a wishlist</h1>
+  <p class="page-subtitle mb-4">Give your ideas a home. You can add gifts, places, and plans whenever they come to mind.</p>
+  <div class="card border-0 p-4 p-md-5" style="max-width: 660px">
+    <%= render "form", wlist: @wlist %>
+  </div>
+</section>

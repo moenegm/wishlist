@@ -1,9 +1,10 @@
 class WlistsController < ApplicationController
+  before_action :authenticate_user!
   before_action :set_wlist, only: %i[ show edit update destroy ]
 
   # GET /wlists or /wlists.json
   def index
-    @wlists = Wlist.all
+    @wlists = current_user.wlists
   end
 
   # GET /wlists/1 or /wlists/1.json
@@ -12,7 +13,7 @@ class WlistsController < ApplicationController
 
   # GET /wlists/new
   def new
-    @wlist = Wlist.new
+    @wlist = current_user.wlists.new
   end
 
   # GET /wlists/1/edit
@@ -21,7 +22,7 @@ class WlistsController < ApplicationController
 
   # POST /wlists or /wlists.json
   def create
-    @wlist = Wlist.new(wlist_params)
+    @wlist = current_user.wlists.new(wlist_params)
 
     respond_to do |format|
       if @wlist.save
@@ -49,22 +50,27 @@ class WlistsController < ApplicationController
 
   # DELETE /wlists/1 or /wlists/1.json
   def destroy
-    @wlist.destroy
+    destroyed = @wlist.destroy
 
     respond_to do |format|
-      format.html { redirect_to wlists_url, notice: "Wlist was successfully destroyed." }
-      format.json { head :no_content }
+      if destroyed
+        format.html { redirect_to wlists_url, notice: "Wishlist was successfully deleted." }
+        format.json { head :no_content }
+      else
+        format.html { redirect_to @wlist, alert: "Delete the wishes in this wishlist before deleting it." }
+        format.json { render json: @wlist.errors, status: :unprocessable_entity }
+      end
     end
   end
 
   private
     # Use callbacks to share common setup or constraints between actions.
     def set_wlist
-      @wlist = Wlist.find(params[:id])
+      @wlist = current_user.wlists.find(params[:id])
     end
 
     # Only allow a list of trusted parameters through.
     def wlist_params
-      params.require(:wlist).permit(:title, :user_id, :wl_category)
+      params.require(:wlist).permit(:title, :wl_category)
     end
 end

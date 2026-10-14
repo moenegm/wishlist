@@ -1,10 +1,43 @@
-<p style="color: green"><%= notice %></p>
+<% content_for :title, "#{@wlist.title} · Wishwell" %>
+<section class="page-section">
+  <%= link_to "← All wishlists", wlists_path, class: "small text-decoration-none fw-semibold" %>
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mt-4 mb-5">
+    <div>
+      <p class="eyebrow"><%= @wlist.wl_category.presence || "Your wishlist" %></p>
+      <h1 class="page-title"><%= @wlist.title %></h1>
+      <p class="page-subtitle mb-0"><%= pluralize(@wlist.wishes.size, "wish") %> saved in this list</p>
+    </div>
+    <div class="d-flex gap-2">
+      <%= link_to "Edit list", edit_wlist_path(@wlist), class: "btn btn-outline-dark" %>
+      <%= link_to "Add a wish", new_wish_path(wlists_id: @wlist.id), class: "btn btn-dark" %>
+    </div>
+  </div>
 
-<%= render @wlist %>
-
-<div>
-  <%= link_to "Edit this wlist", edit_wlist_path(@wlist) %> |
-  <%= link_to "Back to wlists", wlists_path %>
-
-  <%= button_to "Destroy this wlist", @wlist, method: :delete %>
-</div>
+  <% if @wlist.wishes.any? %>
+    <div class="row g-3">
+      <% @wlist.wishes.order(created_at: :desc).each do |wish| %>
+        <div class="col-12 col-md-6 col-lg-4">
+          <article class="card h-100 border-0 p-4">
+            <span class="brand-mark mb-4"><i class="bi bi-heart" aria-hidden="true"></i></span>
+            <h2 class="h4"><%= link_to wish.title, wish, class: "text-decoration-none text-dark" %></h2>
+            <% if wish.location.present? %><p class="text-muted mb-2"><i class="bi bi-geo-alt me-2" aria-hidden="true"></i><%= wish.location %></p><% end %>
+            <div class="d-flex justify-content-between align-items-center mt-auto pt-3">
+              <span class="fw-semibold"><%= number_to_currency(wish.price) if wish.price.present? %></span>
+              <%= link_to "View", wish, class: "small fw-semibold text-decoration-none" %>
+            </div>
+          </article>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="empty-state p-4 p-md-5">
+      <span class="empty-icon"><i class="bi bi-heart" aria-hidden="true"></i></span>
+      <h2 class="h4">This list is ready for a first wish</h2>
+      <p class="text-muted mb-4">Add something you’ve been thinking about and keep it close.</p>
+      <%= link_to "Add a wish", new_wish_path(wlists_id: @wlist.id), class: "btn btn-dark" %>
+    </div>
+  <% end %>
+  <% if @wlist.wishes.empty? %>
+    <div class="mt-4"><%= button_to "Delete this wishlist", @wlist, method: :delete, class: "btn btn-link link-secondary p-0 text-decoration-none", form: { data: { turbo_confirm: "Delete this wishlist? This cannot be undone." } } %></div>
+  <% end %>
+</section>

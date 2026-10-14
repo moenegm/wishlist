@@ -1,14 +1,37 @@
-<p style="color: green"><%= notice %></p>
+<% content_for :title, "Your wishlists · Wishwell" %>
+<section class="page-section">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-5">
+    <div>
+      <p class="eyebrow">Gather what you’re dreaming of</p>
+      <h1 class="page-title">Your wishlists</h1>
+      <p class="page-subtitle mb-0">One place for every idea, occasion, and maybe-someday.</p>
+    </div>
+    <%= link_to "New wishlist", new_wlist_path, class: "btn btn-dark" %>
+  </div>
 
-<h1>Wlists</h1>
-
-<div id="wlists">
-  <% @wlists.each do |wlist| %>
-    <%= render wlist %>
-    <p>
-      <%= link_to "Show this wlist", wlist %>
-    </p>
+  <% if @wlists.any? %>
+    <div class="row g-3">
+      <% @wlists.each do |wlist| %>
+        <div class="col-12 col-md-6 col-lg-4">
+          <article class="card h-100 border-0 p-4">
+            <div class="d-flex justify-content-between align-items-start mb-4">
+              <span class="brand-mark"><i class="bi bi-bookmark-heart" aria-hidden="true"></i></span>
+              <span class="small text-muted"><%= l(wlist.created_at.to_date, format: :long) %></span>
+            </div>
+            <p class="eyebrow mb-2"><%= wlist.wl_category.presence || "Wishlist" %></p>
+            <h2 class="h4 mb-2"><%= link_to wlist.title, wlist, class: "text-decoration-none text-dark" %></h2>
+            <p class="text-muted mb-4"><%= pluralize(wlist.wishes.size, "wish") %></p>
+            <%= link_to "Open wishlist", wlist, class: "link-dark text-decoration-none fw-semibold mt-auto" %>
+          </article>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="empty-state p-4 p-md-5">
+      <span class="empty-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+      <h2 class="h4">Your first list starts here</h2>
+      <p class="text-muted mb-4">Create a wishlist for a special day, a home project, or all the little things you love.</p>
+      <%= link_to "Create your first wishlist", new_wlist_path, class: "btn btn-dark" %>
+    </div>
   <% end %>
-</div>
-
-<%= link_to "New wlist", new_wlist_path %>
+</section>

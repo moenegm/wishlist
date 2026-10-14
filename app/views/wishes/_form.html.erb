@@ -1,42 +1,38 @@
 <%= form_with(model: wish) do |form| %>
   <% if wish.errors.any? %>
-    <div style="color: red">
-      <h2><%= pluralize(wish.errors.count, "error") %> prohibited this wish from being saved:</h2>
-
-      <ul>
-        <% wish.errors.each do |error| %>
-          <li><%= error.full_message %></li>
-        <% end %>
-      </ul>
+    <div class="form-errors p-3 mb-4" role="alert">
+      <p class="fw-semibold mb-2"><%= pluralize(wish.errors.count, "thing") %> needs your attention:</p>
+      <ul class="mb-0"><% wish.errors.full_messages.each do |message| %><li><%= message %></li><% end %></ul>
     </div>
   <% end %>
 
-  <div>
-    <%= form.label :title, style: "display: block" %>
-    <%= form.text_field :title %>
+  <div class="mb-4">
+    <%= form.label :title, "What are you wishing for?", class: "form-label" %>
+    <%= form.text_field :title, class: "form-control", placeholder: "A name you’ll remember", autofocus: true, required: true %>
   </div>
-
-  <div>
-    <%= form.label :location, style: "display: block" %>
-    <%= form.text_field :location %>
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-7">
+      <%= form.label :location, "Where can you find it?", class: "form-label" %>
+      <%= form.text_field :location, class: "form-control", placeholder: "A shop or a link" %>
+    </div>
+    <div class="col-12 col-md-5">
+      <%= form.label :price, "Price", class: "form-label" %>
+      <%= form.number_field :price, class: "form-control", placeholder: "0.00", min: 0, step: 0.01 %>
+    </div>
   </div>
-
-  <div>
-    <%= form.label :price, style: "display: block" %>
-    <%= form.text_field :price %>
-  </div>
-
-  <div>
-    <%= form.label :wlists_id, style: "display: block" %>
-    <%= form.text_field :wlists_id %>
-  </div>
-
-  <div>
-    <%= form.label :user_id, style: "display: block" %>
-    <%= form.text_field :user_id %>
-  </div>
-
-  <div>
-    <%= form.submit %>
-  </div>
+  <% if current_user.wlists.any? %>
+    <div class="mb-4">
+      <%= form.label :wlists_id, "Add it to", class: "form-label" %>
+      <%= form.collection_select :wlists_id, current_user.wlists.order(:title), :id, :title, { prompt: "Choose a wishlist" }, class: "form-select", required: true %>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <%= form.submit(wish.persisted? ? "Save wish" : "Add to wishlist", class: "btn btn-dark") %>
+      <%= link_to "Cancel", wishes_path, class: "text-decoration-none" %>
+    </div>
+  <% else %>
+    <div class="alert alert-light border mb-0">
+      <p class="mb-2">A wish needs a wishlist to live in.</p>
+      <%= link_to "Create your first wishlist", new_wlist_path, class: "btn btn-outline-dark btn-sm" %>
+    </div>
+  <% end %>
 <% end %>

@@ -1,10 +1,9 @@
-<h1>Editing wlist</h1>
-
-<%= render "form", wlist: @wlist %>
-
-<br>
-
-<div>
-  <%= link_to "Show this wlist", @wlist %> |
-  <%= link_to "Back to wlists", wlists_path %>
-</div>
+<% content_for :title, "Edit #{@wlist.title} · Wishwell" %>
+<section class="page-section">
+  <p class="eyebrow">Make it yours</p>
+  <h1 class="page-title">Edit wishlist</h1>
+  <p class="page-subtitle mb-4">Update the name or category for “<%= @wlist.title %>”.</p>
+  <div class="card border-0 p-4 p-md-5" style="max-width: 660px">
+    <%= render "form", wlist: @wlist %>
+  </div>
+</section>

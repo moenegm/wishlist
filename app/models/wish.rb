@@ -1,13 +1,7 @@
 class Wish < ApplicationRecord
-    has_one :User
-    belongs_to :Wlist, optional: true
+  belongs_to :user
+  belongs_to :wlist, class_name: "Wlist", foreign_key: :wlists_id
 
-    has_and_belongs_to_many :friendships, 
-    class_name: "User", 
-    join_table:  :friendships, 
-    foreign_key: :user_id, 
-    association_foreign_key: :friend_user_id
-
-    
-
+  validates :title, presence: true
+  validates :price, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
 end

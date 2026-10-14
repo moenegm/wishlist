@@ -6,7 +6,7 @@ class User < ApplicationRecord
 
   has_one_attached :avatar
 
-  has_many :wishes
-  has_many :wlists
+  has_many :wishes, dependent: :destroy
+  has_many :wlists, dependent: :destroy
   
 end

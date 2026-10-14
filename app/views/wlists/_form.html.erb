@@ -1,32 +1,22 @@
 <%= form_with(model: wlist) do |form| %>
   <% if wlist.errors.any? %>
-    <div style="color: red">
-      <h2><%= pluralize(wlist.errors.count, "error") %> prohibited this wlist from being saved:</h2>
-
-      <ul>
-        <% wlist.errors.each do |error| %>
-          <li><%= error.full_message %></li>
-        <% end %>
-      </ul>
+    <div class="form-errors p-3 mb-4" role="alert">
+      <p class="fw-semibold mb-2"><%= pluralize(wlist.errors.count, "thing") %> needs your attention:</p>
+      <ul class="mb-0"><% wlist.errors.full_messages.each do |message| %><li><%= message %></li><% end %></ul>
     </div>
   <% end %>
 
-  <div>
-    <%= form.label :title, style: "display: block" %>
-    <%= form.text_field :title %>
+  <div class="mb-4">
+    <%= form.label :title, "Give your wishlist a name", class: "form-label" %>
+    <%= form.text_field :title, class: "form-control", placeholder: "Birthday ideas, little treats…", autofocus: true, required: true %>
   </div>
-
-  <div>
-    <%= form.label :user_id, style: "display: block" %>
-    <%= form.text_field :user_id %>
+  <div class="mb-4">
+    <%= form.label :wl_category, "What is it for?", class: "form-label" %>
+    <%= form.text_field :wl_category, class: "form-control", placeholder: "Birthday, home, just because…" %>
+    <p class="form-hint mb-0">A short label helps you find it later.</p>
   </div>
-
-  <div>
-    <%= form.label :wl_category, style: "display: block" %>
-    <%= form.text_field :wl_category %>
-  </div>
-
-  <div>
-    <%= form.submit %>
+  <div class="d-flex flex-wrap align-items-center gap-3">
+    <%= form.submit(wlist.persisted? ? "Save changes" : "Create wishlist", class: "btn btn-dark") %>
+    <%= link_to "Cancel", wlists_path, class: "text-decoration-none" %>
   </div>
 <% end %>

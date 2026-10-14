@@ -1,24 +1,40 @@
-# README
+# Wishwell
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Wishwell is a small, private-by-default place to keep wishlists and the things you are hoping for. Create an account, make a list, and save a wish with its price and where to find it.
 
-Things you may want to cover:
+## Stack
 
-* Ruby version
+- Ruby 3.4.11
+- Rails 8.1
+- PostgreSQL
+- Devise for accounts
+- Active Storage for profile photos
 
-* System dependencies
+## Run locally
 
-* Configuration
+Install Ruby 3.4.11 and PostgreSQL, then run:
 
-* Database creation
+```sh
+bundle install
+bin/rails db:prepare
+bin/rails server
+```
 
-* Database initialization
+Open `http://localhost:3000`. The local Active Storage service saves uploads under `storage/`.
 
-* How to run the test suite
+## Deploy for $0
 
-* Services (job queues, cache servers, search engines, etc.)
+The repository includes a Render Blueprint in `render.yaml`. For a small public demo:
 
-* Deployment instructions
+1. Create a Supabase project in Frankfurt and copy its PostgreSQL connection string.
+2. Create a private bucket for profile photos. Enable S3 access in Supabase Storage and generate S3 credentials.
+3. Connect the GitHub repository to Render and create a Blueprint from `render.yaml`.
+4. When Render prompts for values, provide `DATABASE_URL`, `SUPABASE_S3_ACCESS_KEY_ID`, `SUPABASE_S3_SECRET_ACCESS_KEY`, `SUPABASE_S3_REGION`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_S3_ENDPOINT` from Supabase. Render generates `SECRET_KEY_BASE`.
 
-* ...
+The Blueprint builds assets, runs database migrations, starts Puma, and keeps uploaded photos in Supabase Storage. Keep S3 credentials in Render’s environment settings; they grant server-side access to storage.
+
+The free setup is suited to a portfolio demo, not dependable production hosting. [Render free web services sleep after 15 minutes of inactivity](https://render.com/docs/free), and its free Postgres databases expire after 30 days. [Supabase’s free database has a 500 MB quota](https://supabase.com/docs/guides/platform/database-size), and projects may pause after a week without activity. Free plans do not include backups, so keep an export of any data you want to preserve.
+
+## Configuration notes
+
+Local development uses disk storage. Production defaults to disk storage too; set `ACTIVE_STORAGE_SERVICE=supabase` only after adding the Supabase S3 settings above. Database connection details are supplied through `DATABASE_URL` in production. Never commit service credentials or production secrets.

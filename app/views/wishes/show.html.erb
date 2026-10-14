@@ -1,10 +1,21 @@
-<p style="color: green"><%= notice %></p>
-
-<%= render @wish %>
-
-<div>
-  <%= link_to "Edit this wish", edit_wish_path(@wish) %> |
-  <%= link_to "Back to wishes", wishes_path %>
-
-  <%= button_to "Destroy this wish", @wish, method: :delete %>
-</div>
+<% content_for :title, "#{@wish.title} · Wishwell" %>
+<section class="page-section">
+  <%= link_to "← All wishes", wishes_path, class: "small text-decoration-none fw-semibold" %>
+  <article class="card border-0 p-4 p-md-5 mt-4" style="max-width: 760px">
+    <span class="brand-mark mb-4"><i class="bi bi-heart-fill" aria-hidden="true"></i></span>
+    <p class="eyebrow mb-2">A wish in <%= link_to @wish.wlist.title, @wish.wlist, class: "text-decoration-none" %></p>
+    <h1 class="page-title"><%= @wish.title %></h1>
+    <div class="d-flex flex-wrap gap-4 mt-4 mb-5">
+      <% if @wish.price.present? %>
+        <div><p class="small text-muted mb-1">Price</p><p class="h5 mb-0"><%= number_to_currency(@wish.price) %></p></div>
+      <% end %>
+      <% if @wish.location.present? %>
+        <div><p class="small text-muted mb-1">Where to find it</p><p class="h5 mb-0"><%= @wish.location %></p></div>
+      <% end %>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-3 border-top pt-4">
+      <%= link_to "Edit wish", edit_wish_path(@wish), class: "btn btn-dark" %>
+      <%= button_to "Remove wish", @wish, method: :delete, class: "btn btn-outline-dark", form: { data: { turbo_confirm: "Remove this wish from your list?" } } %>
+    </div>
+  </article>
+</section>

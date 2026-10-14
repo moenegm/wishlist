@@ -1,28 +1,100 @@
 /*
- * This is a manifest file that'll be compiled into application.css, which will include all the files
- * listed below.
- *
- * Any CSS (and SCSS, if configured) file within this directory, lib/assets/stylesheets, or any plugin's
- * vendor/assets/stylesheets directory can be referenced here using a relative path.
- *
- * You're free to add application-wide styles to this file and they'll appear at the bottom of the
- * compiled file so the styles you add here take precedence over styles defined in any other CSS
- * files in this directory. Styles in this file should be added after the last require_* statement.
- * It is generally better to create a new file per style scope.
- *
  *= require_tree .
  *= require_self
  */
-.img {
-    width: 300px; /* You can set the dimensions to whatever you want */
-    height: 300px;
-    object-fit: cover;
+
+:root {
+  --ink: #25302d;
+  --muted: #737d78;
+  --paper: #fbfaf7;
+  --surface: #ffffff;
+  --line: #e9e7df;
+  --green: #31584b;
+  --green-deep: #25463b;
+  --peach: #f7e9dc;
+  --peach-ink: #8b5639;
+  --shadow: 0 18px 50px rgba(38, 48, 44, .07);
 }
 
-.avatar {
-    width: 200px; /* You can set the dimensions to whatever you want */
-    height: 200px;
-    border-radius: 50%;
-    margin: auto;
-    object-fit: cover;
+* { box-sizing: border-box; }
+
+body {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--green); }
+a:hover { color: var(--green-deep); }
+
+.site-nav {
+  background: rgba(255, 255, 255, .94);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 4px 20px rgba(38, 48, 44, .025);
+}
+
+.site-brand {
+  color: var(--ink) !important;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -.045em;
+}
+
+.brand-mark {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  margin-right: .45rem;
+  place-items: center;
+  border-radius: .75rem;
+  background: var(--peach);
+  color: var(--peach-ink);
+  font-size: .95rem;
+}
+
+.site-nav .nav-link {
+  padding: .65rem .8rem !important;
+  border-radius: .7rem;
+  color: #59645e;
+  font-size: .94rem;
+  font-weight: 550;
+}
+.site-nav .nav-link:hover, .site-nav .nav-link.active { background: #f2f4f0; color: var(--green-deep); }
+.site-nav .btn { margin-left: .4rem; }
+.site-nav .button_to { display: inline-block; margin: 0; }
+
+.app-shell { width: min(100% - 2rem, 1080px); margin: 0 auto; }
+.page-section { padding-top: clamp(2.5rem, 6vw, 5rem); padding-bottom: 5rem; }
+.eyebrow { margin-bottom: .65rem; color: var(--peach-ink); font-size: .74rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.page-title { margin-bottom: .6rem; font-size: clamp(2.15rem, 5vw, 3.5rem); font-weight: 720; letter-spacing: -.06em; line-height: 1.05; }
+.page-subtitle { max-width: 42rem; color: var(--muted); font-size: 1.05rem; line-height: 1.7; }
+
+.btn { border-radius: .75rem; font-weight: 650; padding: .68rem 1rem; }
+.btn-dark, .btn-primary { border-color: var(--green); background: var(--green); }
+.btn-dark:hover, .btn-primary:hover { border-color: var(--green-deep); background: var(--green-deep); }
+.btn-outline-dark { border-color: #b9c5bd; color: var(--green-deep); }
+.btn-outline-dark:hover { border-color: var(--green); background: var(--green); }
+
+.card, .surface-card { border: 1px solid var(--line) !important; border-radius: 1.1rem !important; background: var(--surface); box-shadow: var(--shadow); }
+.list-group { overflow: hidden; border-radius: 1rem; }
+.list-group-item { border-color: var(--line); color: var(--ink); }
+.list-group-item-action:hover { background: #f8f8f4; color: var(--ink); }
+.form-label { margin-bottom: .45rem; color: #39443f; font-size: .92rem; font-weight: 650; }
+.form-control, .form-select { min-height: 3rem; border-color: #dcded6; border-radius: .7rem; background-color: #fff; color: var(--ink); }
+.form-control:focus, .form-select:focus { border-color: #7da28f; box-shadow: 0 0 0 .22rem rgba(49, 88, 75, .12); }
+.form-hint { margin-top: .4rem; color: var(--muted); font-size: .84rem; }
+.form-errors { border: 1px solid #edc8bb; border-radius: .8rem; background: #fff7f3; color: #773d2c; }
+.text-muted { color: var(--muted) !important; }
+.empty-state { border: 1px dashed #d8d9cf; border-radius: 1rem; background: rgba(255, 255, 255, .65); }
+.empty-icon { display: grid; width: 3rem; height: 3rem; margin-bottom: 1rem; place-items: center; border-radius: 1rem; background: var(--peach); color: var(--peach-ink); font-size: 1.2rem; }
+.auth-card { width: min(100%, 500px); margin: clamp(2.5rem, 7vw, 5.5rem) auto; padding: clamp(1.5rem, 5vw, 3rem); }
+.auth-card .page-title { font-size: clamp(2rem, 5vw, 2.8rem); }
+.avatar { width: 160px; height: 160px; border-radius: 50%; object-fit: cover; }
+
+@media (max-width: 575.98px) {
+  .app-shell { width: min(100% - 1.25rem, 1080px); }
+  .page-section { padding-top: 2.25rem; }
+  .site-nav .btn { margin: .4rem 0; }
 }

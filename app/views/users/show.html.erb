@@ -1,22 +1,22 @@
-</br>
-<div class="container">
-    <div class="row text-center">
-        <div class="col justify-content-center"> 
-            <%= check_avatar(@user) %>
+<% content_for :title, "Your profile · Wishwell" %>
+<section class="page-section">
+  <p class="eyebrow">The person behind the wishes</p>
+  <h1 class="page-title">Your profile</h1>
+  <div class="card border-0 p-4 p-md-5 mt-4" style="max-width: 720px">
+    <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-4">
+      <% if @user.avatar.attached? %>
+        <%= image_tag @user.avatar, class: "avatar", alt: "Profile photo for #{@user.first_name}" %>
+      <% else %>
+        <div class="avatar d-grid place-items-center" style="background: var(--peach); color: var(--peach-ink); place-items: center; font-size: 3rem; font-weight: 700;">
+          <%= @user.first_name.to_s.first&.upcase || "W" %>
         </div>
+      <% end %>
+      <div>
+        <h2 class="h3 mb-1"><%= [@user.first_name, @user.last_name].compact_blank.join(" ").presence || "Wishwell member" %></h2>
+        <p class="text-muted mb-3"><%= @user.email %></p>
+        <p class="small text-muted mb-0"><%= pluralize(@user.wlists.count, "wishlist") %> · <%= pluralize(@user.wishes.count, "wish") %></p>
+      </div>
     </div>
-
-    <div class="row text-center">
-        <div class="col mb-4"> 
-            <%= name(@user.id) %>
-        </div>
-    </div>
-
-    <% if user_signed_in? && @user.id == current_user.id%>
-        <div class="row justify-content-start">
-            <div class="col">   
-                <%= link_to 'Edit Personal Information', edit_user_registration_path(current_user), class:"btn btn-secondary mb-3" %>
-            </div>
-        </div>
-    <% end %>
-</div>
+    <div class="border-top mt-4 pt-4"><%= link_to "Edit your details", edit_user_registration_path, class: "btn btn-dark" %></div>
+  </div>
+</section>

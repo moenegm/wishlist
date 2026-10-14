@@ -1,58 +1,33 @@
-</br>
-<div class="col align-self-center card">
-  <div class="card-header text-center">
-    Edit Your Personal Information
-  </div>
-  <div class="card-body">
+<% content_for :title, "Account settings · Wishwell" %>
+<section class="page-section">
+  <p class="eyebrow">Your details, your way</p>
+  <h1 class="page-title">Account settings</h1>
+  <p class="page-subtitle mb-4">Update your profile and sign-in details.</p>
 
+  <div class="card border-0 p-4 p-md-5 mb-4" style="max-width: 720px">
     <%= form_for(resource, as: resource_name, url: registration_path(resource_name), html: { method: :put }) do |f| %>
       <%= devise_error_messages! %>
-      <div class="field form-group mb-3">
-          <%= f.text_field :first_name, autofocus: true, autocomplete: "name", class:"form-control mb-3", placeholder:"First Name" %>
-      </div>  
-
-      <div class="field form-group mb-3">
-          <%= f.text_field :last_name, autofocus: true, autocomplete: "name", class:"form-control mb-3", placeholder:"Last Name" %>
-      </div>   
-
-      <div class="field form-group mb-3">
-        <%= f.email_field :email, autofocus: true, autocomplete: "email", class:"form-control mb-3", placeholder:"Email"  %>
+      <div class="row g-3 mb-3">
+        <div class="col-sm-6"><%= f.label :first_name, class: "form-label" %><%= f.text_field :first_name, autocomplete: "given-name", class: "form-control" %></div>
+        <div class="col-sm-6"><%= f.label :last_name, class: "form-label" %><%= f.text_field :last_name, autocomplete: "family-name", class: "form-control" %></div>
       </div>
-
+      <div class="mb-3"><%= f.label :email, class: "form-label" %><%= f.email_field :email, autocomplete: "email", class: "form-control" %></div>
       <% if devise_mapping.confirmable? && resource.pending_reconfirmation? %>
-        <div>Currently waiting confirmation for: <%= resource.unconfirmed_email %></div>
+        <p class="alert alert-info">Waiting to confirm: <%= resource.unconfirmed_email %></p>
       <% end %>
-
-      <div class="field form-group mb-3">
-        <%= f.password_field :password, autocomplete: "new-password", class:"form-control mb-3", placeholder:"New Password: Leave blank if you don't want to change it (#{@minimum_password_length} characters minimum)" %>
-      </div>
-
-      <div class="field form-group mb-3">
-        <%= f.password_field :password_confirmation, autocomplete: "new-password", class:"form-control mb-3", placeholder:"Confirm New Password" %>
-      </div>
-
-      <div class="field form-group mb-3">
-        <%= f.password_field :current_password, autocomplete: "current-password", class:"form-control mb-3 btn-outline-danger", placeholder:"Enter Current Password to confirm any changes" %>
-      </div>
-
-      <div class="field form-group text-center mb-3">
-        <%= f.file_field :avatar, class:"form-control mb-4", placeholder:"Choose an Avatar" %>
-      </div>
-
-      <div class="actions">
-        <%= f.submit "Update", class:"btn btn-primary" %>
-      </div>
+      <div class="mb-3"><%= f.label :avatar, "Profile photo", class: "form-label" %><%= f.file_field :avatar, class: "form-control", accept: "image/*" %></div>
+      <hr class="my-4">
+      <p class="fw-semibold mb-3">Change your password <span class="small text-muted fw-normal">(leave blank to keep it)</span></p>
+      <div class="mb-3"><%= f.label :password, "New password", class: "form-label" %><%= f.password_field :password, autocomplete: "new-password", class: "form-control" %></div>
+      <div class="mb-3"><%= f.label :password_confirmation, "Confirm new password", class: "form-label" %><%= f.password_field :password_confirmation, autocomplete: "new-password", class: "form-control" %></div>
+      <div class="mb-4"><%= f.label :current_password, "Current password to save changes", class: "form-label" %><%= f.password_field :current_password, autocomplete: "current-password", class: "form-control", required: true %></div>
+      <%= f.submit "Save changes", class: "btn btn-dark" %>
     <% end %>
   </div>
-</div>
-</br>
-<div class="col align-self-center card text-center">
-  <div class="card-header"> 
-    Unhappy? Cancel my account!
-  </div>
-  <div class="card-body">
-    <%= button_to "Cancel my account", registration_path(resource_name), data: { confirm: "Are you sure?" }, method: :delete, class:"btn btn-danger" %></p>
-  </div>
-</div>
 
-<%= link_to "Back", :back, class:"nav-link" %>
+  <div class="card border-0 p-4" style="max-width: 720px">
+    <h2 class="h5">Close your account</h2>
+    <p class="text-muted">This removes your account and its saved lists and wishes.</p>
+    <div><%= button_to "Delete account", registration_path(resource_name), method: :delete, class: "btn btn-outline-danger", form: { data: { turbo_confirm: "Delete your account and all its wishlists and wishes? This cannot be undone." } } %></div>
+  </div>
+</section>

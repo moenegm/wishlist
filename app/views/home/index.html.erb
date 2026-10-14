@@ -1,2 +1,74 @@
-<h1>Home#index</h1>
-<p>Find me in app/views/home/index.html.erb</p>
+<% content_for :title, "Your space · Wishwell" %>
+<section class="page-section">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-5">
+    <div>
+      <p class="eyebrow">A little room for what you love</p>
+      <h1 class="page-title"><%= current_user.first_name.presence || "Welcome back" %>.</h1>
+      <p class="page-subtitle mb-0">Keep the things you’re looking forward to, all in one place.</p>
+    </div>
+    <%= link_to(@wlists.any? ? "Add a wish" : "Create a wishlist", @wlists.any? ? new_wish_path : new_wlist_path, class: "btn btn-dark") %>
+  </div>
+
+  <div class="row g-3 mb-5">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 p-3 p-md-4 h-100"><p class="small text-muted mb-1">Wishlists</p><p class="h2 mb-0"><%= @wlists.size %></p></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 p-3 p-md-4 h-100"><p class="small text-muted mb-1">Wishes saved</p><p class="h2 mb-0"><%= current_user.wishes.count %></p></div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+    <div><p class="eyebrow mb-1">Your collections</p><h2 class="h3 mb-0">Wishlists</h2></div>
+    <%= link_to "See all", wlists_path, class: "small fw-semibold text-decoration-none" if @wlists.any? %>
+  </div>
+
+  <% if @wlists.any? %>
+    <div class="row g-3 mb-5">
+      <% @wlists.first(3).each do |wlist| %>
+        <div class="col-12 col-md-6 col-lg-4">
+          <article class="card h-100 border-0 p-4">
+            <span class="brand-mark mb-4"><i class="bi bi-bookmark-heart" aria-hidden="true"></i></span>
+            <p class="eyebrow mb-2"><%= wlist.wl_category.presence || "Wishlist" %></p>
+            <h3 class="h4 mb-2"><%= link_to wlist.title, wlist, class: "text-decoration-none text-dark" %></h3>
+            <p class="text-muted mb-0"><%= pluralize(wlist.wishes.size, "wish") %></p>
+          </article>
+        </div>
+      <% end %>
+      <div class="col-12 col-md-6 col-lg-4">
+        <%= link_to new_wlist_path, class: "empty-state d-flex flex-column justify-content-center align-items-start h-100 p-4 text-decoration-none" do %>
+          <span class="empty-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
+          <span class="fw-semibold">Make another list</span>
+          <span class="small text-muted mt-1">Start a new collection</span>
+        <% end %>
+      </div>
+    </div>
+  <% else %>
+    <div class="empty-state p-4 p-md-5 mb-5">
+      <span class="empty-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+      <h3 class="h4">Start with a wishlist</h3>
+      <p class="text-muted mb-4">Make a list for a special day, a home project, or all the little things you love.</p>
+      <%= link_to "Create your first wishlist", new_wlist_path, class: "btn btn-dark" %>
+    </div>
+  <% end %>
+
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+    <div><p class="eyebrow mb-1">Saved most recently</p><h2 class="h3 mb-0">Recent wishes</h2></div>
+    <%= link_to "See all", wishes_path, class: "small fw-semibold text-decoration-none" if @wishes.any? %>
+  </div>
+  <% if @wishes.any? %>
+    <div class="list-group">
+      <% @wishes.each do |wish| %>
+        <%= link_to wish, class: "list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-3 p-3 p-md-4" do %>
+          <div class="d-flex align-items-center gap-3">
+            <span class="brand-mark mb-0"><i class="bi bi-heart" aria-hidden="true"></i></span>
+            <div><span class="fw-semibold"><%= wish.title %></span><div class="small text-muted"><%= wish.wlist.title %></div></div>
+          </div>
+          <span class="text-nowrap"><%= number_to_currency(wish.price) if wish.price.present? %></span>
+        <% end %>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="text-muted">Your new wishes will show up here.</p>
+  <% end %>
+</section>
