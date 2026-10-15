@@ -4,7 +4,7 @@ class UsersController < ApplicationController
     @own_profile = user_signed_in? && @user.id == current_user.id
     @public_wlists = @user.wlists.publicly_visible.includes(:wishes).order(created_at: :desc)
 
-    raise ActiveRecord::RecordNotFound if !@own_profile && @public_wlists.empty?
+    raise ActiveRecord::RecordNotFound if !@own_profile && @public_wlists.empty? && !user_signed_in?
 
     @wlists = if @own_profile
       @user.wlists.includes(:wishes).order(created_at: :desc)

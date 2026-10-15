@@ -22,7 +22,7 @@
     <% if @people.any? %>
       <div class="row g-3 mb-5"><%= render partial: "person_card", collection: @people, as: :person %></div>
     <% else %>
-      <div class="empty-state p-4 mb-5"><h2 class="h5">No public profiles found</h2><p class="text-muted mb-0">Try another name. People appear here when they share at least one wishlist.</p></div>
+      <div class="empty-state p-4 mb-5"><h2 class="h5">No one found by that name</h2><p class="text-muted mb-0">Try another first or last name.</p></div>
     <% end %>
   <% end %>
 
@@ -54,8 +54,8 @@
     <% else %>
       <div class="empty-state p-4 p-md-5">
         <span class="empty-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
-        <h3 class="h5">Your circle starts with a follow</h3>
-        <p class="text-muted mb-0">Search for someone above, then follow them to keep their public lists handy.</p>
+        <h3 class="h5">No public wishlists in your circle yet</h3>
+        <p class="text-muted mb-0">Search for friends by name and follow them. Their public lists will appear here when they choose to share one.</p>
       </div>
     <% end %>
   </div>
@@ -65,7 +65,7 @@
     <% if @people.any? %>
       <div class="row g-3"><%= render partial: "person_card", collection: @people, as: :person %></div>
     <% else %>
-      <div class="empty-state p-4"><h2 class="h5">No public lists yet</h2><p class="text-muted mb-0">When someone shares a list, their profile will appear here.</p></div>
+      <div class="empty-state p-4"><h2 class="h5">Find people for your circle</h2><p class="text-muted mb-0">Search for friends by name and follow them. You’ll see any public wishlists they share.</p></div>
     <% end %>
   <% end %>
 </section>

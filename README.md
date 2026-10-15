@@ -6,7 +6,7 @@ Wishwell is a small, private-by-default place to keep wishlists and the things y
 
 ## Sharing
 
-Wishlists are private by default. A list owner can make an individual wishlist public; public lists appear on that person’s profile and can be opened without signing in. Signed-in members can find public profiles, follow people, and browse the public lists of people they follow. Private lists remain visible only to their owner.
+Wishlists are private by default. A list owner can make an individual wishlist public; public lists appear on that person’s profile and can be opened without signing in. Signed-in members can search for other members by first or last name and follow them, even if they have not shared a wishlist yet. Public lists from followed members appear in the Circle; private lists remain visible only to their owner.
 
 ## Stack
 

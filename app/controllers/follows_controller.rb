@@ -2,7 +2,7 @@ class FollowsController < ApplicationController
   before_action :authenticate_user!
 
   def create
-    person = User.joins(:wlists).merge(Wlist.publicly_visible).distinct.find(params[:followed_user_id])
+    person = User.find(params[:followed_user_id])
     follow = current_user.follows_as_follower.find_or_initialize_by(followed_user: person)
 
     if follow.save
