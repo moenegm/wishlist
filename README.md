@@ -2,7 +2,11 @@
 
 Live app: [https://wishwell-22rh.onrender.com](https://wishwell-22rh.onrender.com)
 
-Wishwell is a small, private-by-default place to keep wishlists and the things you are hoping for. Create an account, make a list, and save a wish with its price and where to find it.
+Wishwell is a small, private-by-default place to keep wishlists and the things you are hoping for. Create an account, make a list, and save a wish with its price and where to find it. You can share individual lists on your public profile and follow people to keep their shared lists close for birthdays, holidays, and other occasions.
+
+## Sharing
+
+Wishlists are private by default. A list owner can make an individual wishlist public; public lists appear on that person’s profile and can be opened without signing in. Signed-in members can find public profiles, follow people, and browse the public lists of people they follow. Private lists remain visible only to their owner.
 
 ## Stack
 

@@ -20,7 +20,8 @@
             </div>
             <p class="eyebrow mb-2"><%= wlist.wl_category.presence || "Wishlist" %></p>
             <h2 class="h4 mb-2"><%= link_to wlist.title, wlist, class: "text-decoration-none text-dark" %></h2>
-            <p class="text-muted mb-4"><%= pluralize(wlist.wishes.size, "wish") %></p>
+            <p class="text-muted mb-2"><%= pluralize(wlist.wishes.size, "wish") %></p>
+            <span class="visibility-badge mb-3"><i class="bi bi-<%= wlist.is_public? ? 'globe2' : 'lock' %>" aria-hidden="true"></i> <%= wlist.is_public? ? "Public" : "Private" %></span>
             <%= link_to "Open wishlist", wlist, class: "link-dark text-decoration-none fw-semibold mt-auto" %>
           </article>
         </div>

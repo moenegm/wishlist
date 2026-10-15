@@ -176,3 +176,32 @@ a:hover { color: var(--green-deep); }
   .welcome-description { font-size: .9rem; }
   .auth-card { padding: 1.35rem; }
 }
+
+/* Public wishlists and the people who share them. */
+.visibility-option { padding: 1rem; border: 1px solid var(--line); border-radius: .9rem; background: #fafaf7; }
+.visibility-option .form-check-input:checked { border-color: var(--green); background-color: var(--green); }
+.visibility-badge { display: inline-flex; align-items: center; gap: .35rem; width: fit-content; padding: .35rem .6rem; border: 1px solid #dce3d8; border-radius: 999px; background: #f2f5ef; color: var(--green); font-size: .72rem; font-weight: 650; }
+.profile-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: 1.2rem; background: rgba(255,255,255,.72); }
+.profile-identity { display: flex; align-items: center; gap: 1rem; }
+.profile-avatar { width: 5.5rem; height: 5.5rem; flex: 0 0 auto; border-radius: 50%; object-fit: cover; }
+.profile-avatar-fallback, .people-avatar-fallback { display: grid; place-items: center; background: var(--peach); color: var(--peach-ink); font-family: Georgia, "Times New Roman", serif; font-size: 2rem; }
+.people-avatar { width: 3.5rem; height: 3.5rem; flex: 0 0 auto; border-radius: 50%; object-fit: cover; }
+.people-search { display: flex; max-width: 620px; gap: .7rem; }
+.people-search .form-control { flex: 1; }
+.followed-lists { display: grid; gap: .6rem; }
+.followed-list-link { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: .8rem; color: var(--ink); text-decoration: none; transition: border-color .2s, background .2s; }
+.followed-list-link:hover { border-color: #becbbd; background: #f8faf6; color: var(--green-deep); }
+.followed-list-link span { display: grid; gap: .2rem; }
+.followed-list-link small { color: var(--muted); font-size: .78rem; }
+.followed-list-link>i { color: var(--green); }
+
+@media (max-width: 575.98px) {
+  .profile-heading { align-items: flex-start; padding: 1rem; }
+  .profile-avatar { width: 4rem; height: 4rem; }
+  .profile-identity { align-items: flex-start; }
+  .profile-identity .page-title { font-size: 2rem; }
+  .people-search { flex-wrap: wrap; }
+  .people-search .form-control { flex-basis: 100%; }
+}
+.profile-share-link { color: var(--muted); font-size: .78rem; }
+.profile-share-link code { color: var(--green); overflow-wrap: anywhere; }

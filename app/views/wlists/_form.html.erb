@@ -15,6 +15,13 @@
     <%= form.text_field :wl_category, class: "form-control", placeholder: "Birthday, home, just because…" %>
     <p class="form-hint mb-0">A short label helps you find it later.</p>
   </div>
+  <div class="visibility-option mb-4">
+    <div class="form-check">
+      <%= form.check_box :is_public, class: "form-check-input" %>
+      <%= form.label :is_public, "Show this wishlist on my public profile", class: "form-check-label fw-semibold" %>
+    </div>
+    <p class="form-hint mb-0 ms-4">Anyone with your profile link can see a public list. Private lists stay visible only to you.</p>
+  </div>
   <div class="d-flex flex-wrap align-items-center gap-3">
     <%= form.submit(wlist.persisted? ? "Save changes" : "Create wishlist", class: "btn btn-dark") %>
     <%= link_to "Cancel", wlists_path, class: "text-decoration-none" %>

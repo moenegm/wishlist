@@ -1,0 +1,24 @@
+<div class="col-12 col-md-6 col-lg-4">
+  <article class="card h-100 border-0 p-4">
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <% if person.avatar.attached? %>
+        <%= image_tag person.avatar, class: "people-avatar", alt: "" %>
+      <% else %>
+        <span class="people-avatar people-avatar-fallback" aria-hidden="true"><%= person.first_name.to_s.first&.upcase || "W" %></span>
+      <% end %>
+      <div>
+        <h3 class="h5 mb-1"><%= link_to([person.first_name, person.last_name].compact_blank.join(" ").presence || "Wishwell member", person, class: "text-decoration-none text-dark") %></h3>
+        <p class="small text-muted mb-0"><%= pluralize(person.wlists.publicly_visible.size, "public wishlist") %></p>
+      </div>
+    </div>
+    <div class="d-flex gap-2 mt-auto">
+      <%= link_to "View profile", person, class: "btn btn-outline-dark btn-sm" %>
+      <% follow = current_user.follows_as_follower.find_by(followed_user: person) %>
+      <% if follow %>
+        <%= button_to "Following", follow_path(follow), method: :delete, class: "btn btn-dark btn-sm" %>
+      <% else %>
+        <%= button_to "Follow", follows_path(followed_user_id: person.id), method: :post, class: "btn btn-dark btn-sm" %>
+      <% end %>
+    </div>
+  </article>
+</div>

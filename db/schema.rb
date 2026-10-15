@@ -10,9 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2023_08_28_145705) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_15_000001) do
   # These are extensions that must be enabled in order to support this database
-  enable_extension "plpgsql"
+  enable_extension "pg_catalog.plpgsql"
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
@@ -40,6 +40,16 @@ ActiveRecord::Schema[7.0].define(version: 2023_08_28_145705) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "follows", force: :cascade do |t|
+    t.bigint "follower_id", null: false
+    t.bigint "followed_user_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["followed_user_id"], name: "index_follows_on_followed_user_id"
+    t.index ["follower_id", "followed_user_id"], name: "index_follows_on_follower_id_and_followed_user_id", unique: true
+    t.index ["follower_id"], name: "index_follows_on_follower_id"
   end
 
   create_table "friendships", id: false, force: :cascade do |t|
@@ -83,10 +93,13 @@ ActiveRecord::Schema[7.0].define(version: 2023_08_28_145705) do
     t.string "wl_category"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "is_public", default: false, null: false
     t.index ["user_id"], name: "index_wlists_on_user_id"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "follows", "users", column: "followed_user_id"
+  add_foreign_key "follows", "users", column: "follower_id"
   add_foreign_key "wlists", "users"
 end
