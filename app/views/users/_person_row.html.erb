@@ -1,0 +1,11 @@
+<div class="person-row">
+  <%= link_to user_path(person), class: "person-row-link" do %>
+    <% if person.avatar.attached? %><%= image_tag person.avatar, class: "people-avatar", alt: "" %><% else %><span class="people-avatar people-avatar-fallback" aria-hidden="true"><%= person.first_name.to_s.first&.upcase || "W" %></span><% end %>
+    <span><strong><%= [person.first_name, person.last_name].compact_blank.join(" ").presence || "Wishwell member" %></strong><small><%= pluralize(person.wlists.publicly_visible.size, "public wishlist") %></small></span>
+  <% end %>
+  <% if follow %>
+    <%= button_to "Following", follow_path(follow), method: :delete, class: "btn btn-outline-dark btn-sm" %>
+  <% else %>
+    <%= button_to "Follow", follows_path(followed_user_id: person.id), method: :post, class: "btn btn-dark btn-sm" %>
+  <% end %>
+</div>

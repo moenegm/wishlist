@@ -11,6 +11,10 @@ class User < ApplicationRecord
   has_many :following_users, through: :follows_as_follower, source: :followed_user
   has_many :follows_as_followed, class_name: "Follow", foreign_key: :followed_user_id, dependent: :destroy
   has_many :followers, through: :follows_as_followed, source: :follower
+  has_many :likes, dependent: :destroy
+  has_many :comments, dependent: :destroy
+  has_many :received_notifications, class_name: "Notification", foreign_key: :recipient_id, dependent: :destroy
+  has_many :sent_notifications, class_name: "Notification", foreign_key: :actor_id, dependent: :destroy
 
   def following?(user)
     follows_as_follower.exists?(followed_user: user)

@@ -1,0 +1,21 @@
+<% content_for :title, "Notifications · Wishwell" %>
+<section class="page-section">
+  <p class="eyebrow">Your circle, keeping in touch</p>
+  <h1 class="page-title">Notifications</h1>
+  <p class="page-subtitle mb-5">Likes, comments, and new followers will show up here.</p>
+
+  <% if @notifications.any? %>
+    <div class="notification-list">
+      <% @notifications.each do |notification| %>
+        <%= link_to notification.destination_path, class: "notification-item #{'is-unread' if notification.read_at.blank?}" do %>
+          <% icon = if notification.event_type == "followed" then "person-plus" elsif notification.event_type == "added_wish" then "plus-circle" elsif notification.event_type.start_with?("liked") then "heart-fill" else "chat" end %>
+          <span class="notification-icon"><i class="bi bi-<%= icon %>" aria-hidden="true"></i></span>
+          <span class="notification-copy"><strong><%= notification.message %></strong><small><%= time_ago_in_words(notification.created_at) %> ago</small></span>
+          <% if notification.read_at.blank? %><span class="unread-dot" aria-label="Unread"></span><% end %>
+        <% end %>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="empty-state p-4 p-md-5"><span class="empty-icon"><i class="bi bi-bell" aria-hidden="true"></i></span><h2 class="h4">You’re all caught up</h2><p class="text-muted mb-0">When someone follows you, likes something you shared, or leaves a comment, you’ll see it here.</p></div>
+  <% end %>
+</section>

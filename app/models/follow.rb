@@ -1,6 +1,7 @@
 class Follow < ApplicationRecord
   belongs_to :follower, class_name: "User"
   belongs_to :followed_user, class_name: "User"
+  has_many :notifications, as: :notifiable, dependent: :nullify
 
   validates :followed_user_id, uniqueness: { scope: :follower_id }
   validate :cannot_follow_self

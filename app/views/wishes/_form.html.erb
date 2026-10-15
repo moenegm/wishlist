@@ -27,7 +27,7 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-3">
       <%= form.submit(wish.persisted? ? "Save wish" : "Add to wishlist", class: "btn btn-dark") %>
-      <%= link_to "Cancel", wishes_path, class: "text-decoration-none" %>
+      <%= link_to "Cancel", wish.wlist ? wlist_path(wish.wlist) : wlists_path, class: "text-decoration-none" %>
     </div>
   <% else %>
     <div class="alert alert-light border mb-0">

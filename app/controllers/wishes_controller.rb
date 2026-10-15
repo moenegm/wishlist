@@ -1,14 +1,10 @@
 class WishesController < ApplicationController
-  before_action :authenticate_user!
+  before_action :authenticate_user!, except: :show
   before_action :set_wish, only: %i[ show edit update destroy ]
+  before_action :ensure_wish_is_visible, only: :show
 
-  # GET /wishes or /wishes.json
-  def index
-    @wishes = current_user.wishes.includes(:wlist)
-  end
-
-  # GET /wishes/1 or /wishes/1.json
   def show
+    @own_wish = user_signed_in? && @wish.user_id == current_user.id
   end
 
   # GET /wishes/new
@@ -28,6 +24,7 @@ class WishesController < ApplicationController
 
     respond_to do |format|
       if @wish.save
+        notify_followers_of_public_list if @wish.wlist.is_public?
         format.html { redirect_to wish_url(@wish), notice: "Wish was successfully created." }
         format.json { render :show, status: :created, location: @wish }
       else
@@ -58,7 +55,7 @@ class WishesController < ApplicationController
     @wish.destroy
 
     respond_to do |format|
-      format.html { redirect_to wishes_url, notice: "Wish was successfully destroyed." }
+        format.html { redirect_to wlist_url(@wish.wlist), notice: "Wish was successfully removed." }
       format.json { head :no_content }
     end
   end
@@ -66,13 +63,29 @@ class WishesController < ApplicationController
   private
     # Use callbacks to share common setup or constraints between actions.
     def set_wish
-      @wish = current_user.wishes.find(params[:id])
+      @wish = if action_name == "show"
+        Wish.includes(:wlist, :user).find(params[:id])
+      else
+        current_user.wishes.find(params[:id])
+      end
+    end
+
+    def ensure_wish_is_visible
+      return if @wish.wlist.is_public? || (user_signed_in? && @wish.user_id == current_user.id)
+
+      raise ActiveRecord::RecordNotFound
     end
 
     def assign_wlist
       return unless wish_params.key?(:wlists_id)
 
       @wish.wlist = current_user.wlists.find_by(id: wish_params[:wlists_id])
+    end
+
+    def notify_followers_of_public_list
+      @wish.wlist.user.followers.where.not(id: current_user.id).find_each do |follower|
+        Notification.create!(recipient: follower, actor: current_user, event_type: "added_wish", notifiable: @wish)
+      end
     end
 
     # Only allow a list of trusted parameters through.

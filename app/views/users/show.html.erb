@@ -4,68 +4,88 @@
   <p class="eyebrow"><%= @own_profile ? "YOUR LITTLE CORNER" : "A WISHWELL PROFILE" %></p>
   <div class="profile-heading">
     <div class="profile-identity">
-      <% if @user.avatar.attached? %>
-        <%= image_tag @user.avatar, class: "profile-avatar", alt: "Profile photo for #{display_name}" %>
-      <% else %>
-        <div class="profile-avatar profile-avatar-fallback" aria-hidden="true"><%= @user.first_name.to_s.first&.upcase || "W" %></div>
-      <% end %>
+      <% if @user.avatar.attached? %><%= image_tag @user.avatar, class: "profile-avatar", alt: "Profile photo for #{display_name}" %><% else %><div class="profile-avatar profile-avatar-fallback" aria-hidden="true"><%= @user.first_name.to_s.first&.upcase || "W" %></div><% end %>
       <div>
         <h1 class="page-title"><%= display_name %></h1>
         <% if @own_profile %><p class="text-muted mb-1"><%= @user.email %></p><% end %>
-        <p class="small text-muted mb-0"><%= pluralize(@public_wlists.size, "wishlist") %> shared<% if @user.followers.exists? %> · <%= pluralize(@user.followers.count, "follower") %><% end %></p>
+        <p class="small text-muted mb-0"><%= pluralize(@public_wlists.size, "public wishlist") %><% if @user.followers.exists? %> · <%= pluralize(@user.followers.count, "follower") %><% end %></p>
       </div>
     </div>
-    <div class="d-flex flex-column align-items-start gap-2">
-      <% if @own_profile %><p class="profile-share-link mb-0">Share your profile: <code><%= request.base_url %><%= user_path(@user) %></code></p><% end %>
-      <div class="d-flex flex-wrap gap-2">
+    <div class="profile-actions">
       <% if @own_profile %>
+        <p class="profile-share-link mb-0">Share your profile: <code><%= request.base_url %><%= user_path(@user) %></code></p>
         <%= link_to "Edit your details", edit_user_registration_path, class: "btn btn-outline-dark" %>
       <% elsif user_signed_in? %>
-        <% if @follow %>
-          <%= button_to "Following · Unfollow", follow_path(@follow), method: :delete, class: "btn btn-outline-dark" %>
-        <% else %>
-          <%= button_to "Follow", follows_path(followed_user_id: @user.id), method: :post, class: "btn btn-dark" %>
-        <% end %>
+        <% if @follow %><%= button_to "Following · Unfollow", follow_path(@follow), method: :delete, class: "btn btn-outline-dark" %><% else %><%= button_to "Follow", follows_path(followed_user_id: @user.id), method: :post, class: "btn btn-dark" %><% end %>
       <% else %>
         <%= link_to "Sign in to follow", new_user_session_path, class: "btn btn-dark" %>
       <% end %>
-      </div>
     </div>
   </div>
 
   <div class="d-flex justify-content-between align-items-end gap-3 mt-5 mb-3">
-    <div><p class="eyebrow mb-1"><%= @own_profile ? "VISIBLE TO EVERYONE" : "PUBLIC WISHLISTS" %></p><h2 class="h3 mb-0"><%= @own_profile ? "Your public wishlists" : "Public wishlists" %></h2></div>
+    <div><p class="eyebrow mb-1">PUBLIC WISHLISTS</p><h2 class="h3 mb-0"><%= @own_profile ? "Your shared lists" : "Shared lists" %></h2></div>
     <% if @own_profile %><%= link_to "Manage all lists", wlists_path, class: "small text-decoration-none fw-semibold" %><% end %>
   </div>
-
   <% if @public_wlists.any? %>
     <div class="row g-3">
-      <% @public_wlists.each do |wlist| %>
-        <div class="col-12 col-md-6 col-lg-4">
-          <article class="card h-100 border-0 p-4">
-            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-              <span class="brand-mark mb-0"><i class="bi bi-bookmark-heart" aria-hidden="true"></i></span>
-              <% if @own_profile %><span class="visibility-badge"><i class="bi bi-globe2" aria-hidden="true"></i> Public</span><% end %>
-            </div>
-            <p class="eyebrow mb-2"><%= wlist.wl_category.presence || "Wishlist" %></p>
-            <h3 class="h4 mb-2"><%= link_to wlist.title, wlist, class: "text-decoration-none text-dark" %></h3>
-            <p class="text-muted mb-4"><%= pluralize(wlist.wishes.size, "wish") %></p>
-            <%= link_to "Open wishlist", wlist, class: "link-dark text-decoration-none fw-semibold mt-auto" %>
-          </article>
-        </div>
-      <% end %>
+      <% @public_wlists.each do |wlist| %><div class="col-12 col-md-6 col-lg-4"><%= render "wlists/wlist_card", wlist: wlist %></div><% end %>
     </div>
   <% else %>
-    <div class="empty-state p-4 p-md-5">
-      <span class="empty-icon"><i class="bi bi-bookmark-heart" aria-hidden="true"></i></span>
-      <% if @own_profile %>
-        <h2 class="h4">Choose a list to share</h2>
-        <p class="text-muted mb-4">Public wishlists show up here. Your other lists stay private.</p>
-        <%= link_to "Manage your wishlists", wlists_path, class: "btn btn-dark" %>
-      <% else %>
-        <h2 class="h4">No public wishlists yet</h2>
-        <p class="text-muted mb-0">When <%= @user.first_name.presence || "this member" %> shares a public list, it will appear here. Their private lists stay private.</p>
+    <div class="empty-state p-4"><h2 class="h5">No public wishlists yet</h2><p class="text-muted mb-0"><%= @own_profile ? "Choose a wishlist to share it here. Your private lists stay yours." : "This member hasn’t shared a wishlist yet." %></p></div>
+  <% end %>
+
+  <% if @own_profile %>
+    <section class="circle-section mt-5" id="circle">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-3">
+        <div><p class="eyebrow mb-1">YOUR PEOPLE</p><h2 class="h3 mb-0">Your circle</h2><p class="text-muted mb-0">Find friends, follow them, and keep up with the lists they choose to share.</p></div>
+      </div>
+      <%= form_with url: user_path(@user), method: :get, class: "people-search mb-4", id: "circle-search" do |form| %>
+        <%= form.label :q, "Find someone", class: "visually-hidden" %>
+        <%= form.search_field :q, value: @query, class: "form-control", placeholder: "Search by first or last name" %>
+        <%= form.submit "Search", class: "btn btn-dark" %>
       <% end %>
-    </div>
+      <% if @query.present? %>
+        <div class="row g-2 mb-4">
+          <% if @people.any? %>
+            <% @people.each do |person| %>
+              <% follow = current_user.follows_as_follower.find_by(followed_user: person) %>
+              <div class="col-12 col-md-6"><%= render "person_row", person: person, follow: follow %></div>
+            <% end %>
+          <% else %>
+            <div class="col-12"><p class="empty-state p-3 mb-0">No one found by that name. Try another first or last name.</p></div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <details class="circle-list" <%= "open" if @query.blank? && @followers.any? %>>
+            <summary><span>Followers</span><span class="circle-count"><%= @followers.size %></span></summary>
+            <div class="circle-list-items">
+              <% if @followers.any? %>
+                <% @followers.each do |person| %>
+                  <% follow = current_user.follows_as_follower.find_by(followed_user: person) %>
+                  <%= render "person_row", person: person, follow: follow %>
+                <% end %>
+              <% else %><p class="small text-muted mb-0">Your followers will show up here.</p><% end %>
+            </div>
+          </details>
+        </div>
+        <div class="col-12 col-md-6">
+          <details class="circle-list" <%= "open" if @query.blank? && @following.any? %>>
+            <summary><span>Following</span><span class="circle-count"><%= @following.size %></span></summary>
+            <div class="circle-list-items">
+              <% if @following.any? %>
+                <% @following.each do |person| %>
+                  <% follow = current_user.follows_as_follower.find_by(followed_user: person) %>
+                  <%= render "person_row", person: person, follow: follow %>
+                <% end %>
+              <% else %><p class="small text-muted mb-0">Search for a friend above to add them to your circle.</p><% end %>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
   <% end %>
 </section>

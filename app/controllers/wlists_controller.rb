@@ -1,6 +1,7 @@
 class WlistsController < ApplicationController
   before_action :authenticate_user!, except: :show
   before_action :set_wlist, only: %i[show edit update destroy]
+  before_action :set_wlist_for_visibility_toggle, only: :toggle_visibility
   before_action :ensure_wlist_is_visible, only: :show
 
   def index
@@ -9,6 +10,12 @@ class WlistsController < ApplicationController
 
   def show
     @own_wlist = user_signed_in? && @wlist.user_id == current_user.id
+  end
+
+  def toggle_visibility
+    @wlist.update!(is_public: !@wlist.is_public?)
+    visibility = @wlist.is_public? ? "public" : "private"
+    redirect_back fallback_location: wlists_path, notice: "Wishlist is now #{visibility}."
   end
 
   def new
@@ -52,6 +59,10 @@ class WlistsController < ApplicationController
     else
       current_user.wlists.find(params[:id])
     end
+  end
+
+  def set_wlist_for_visibility_toggle
+    @wlist = current_user.wlists.find(params[:id])
   end
 
   def ensure_wlist_is_visible

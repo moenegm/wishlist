@@ -11,33 +11,27 @@
       <h1 class="page-title"><%= @wlist.title %></h1>
       <p class="page-subtitle mb-0"><%= pluralize(@wlist.wishes.size, "wish") %> saved in this list<% unless @own_wlist %> by <%= [@wlist.user.first_name, @wlist.user.last_name].compact_blank.join(" ").presence || "a Wishwell member" %><% end %></p>
     </div>
-    <% if @own_wlist %>
-      <div class="d-flex gap-2">
-        <%= link_to "Edit list", edit_wlist_path(@wlist), class: "btn btn-outline-dark" %>
+    <div class="list-heading-actions">
+      <% if @own_wlist %>
+        <div class="card-controls">
+          <%= link_to edit_wlist_path(@wlist), class: "icon-action", aria: { label: "Edit wishlist" }, title: "Edit wishlist" do %><i class="bi bi-pencil" aria-hidden="true"></i><% end %>
+          <%= button_to toggle_visibility_wlist_path(@wlist), method: :patch, class: "visibility-toggle #{@wlist.is_public? ? 'is-public' : 'is-private'}" do %><i class="bi bi-<%= @wlist.is_public? ? 'globe2' : 'lock' %>" aria-hidden="true"></i><%= @wlist.is_public? ? "Public" : "Private" %><% end %>
+        </div>
         <%= link_to "Add a wish", new_wish_path(wlists_id: @wlist.id), class: "btn btn-dark" %>
-      </div>
-    <% end %>
+      <% end %>
+      <%= render "shared/social_actions", item: @wlist %>
+    </div>
   </div>
 
   <% if @wlist.wishes.any? %>
     <div class="row g-3">
       <% @wlist.wishes.order(created_at: :desc).each do |wish| %>
-        <div class="col-12 col-md-6 col-lg-4">
-          <article class="card h-100 border-0 p-4">
-            <span class="brand-mark mb-4"><i class="bi bi-heart" aria-hidden="true"></i></span>
-            <h2 class="h4"><% if @own_wlist %><%= link_to wish.title, wish, class: "text-decoration-none text-dark" %><% else %><%= wish.title %><% end %></h2>
-            <% if wish.location.present? %><p class="text-muted mb-2"><i class="bi bi-geo-alt me-2" aria-hidden="true"></i><%= wish.location %></p><% end %>
-            <div class="d-flex justify-content-between align-items-center mt-auto pt-3">
-              <span class="fw-semibold"><%= number_to_currency(wish.price) if wish.price.present? %></span>
-              <%= link_to "View", wish, class: "small fw-semibold text-decoration-none" if @own_wlist %>
-            </div>
-          </article>
-        </div>
+        <div class="col-12 col-md-6 col-lg-4"><%= render "wishes/wish_card", wish: wish %></div>
       <% end %>
     </div>
   <% else %>
     <div class="empty-state p-4 p-md-5">
-      <span class="empty-icon"><i class="bi bi-heart" aria-hidden="true"></i></span>
+      <span class="empty-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
       <h2 class="h4"><%= @own_wlist ? "This list is ready for a first wish" : "No wishes in this list yet" %></h2>
       <% if @own_wlist %>
         <p class="text-muted mb-4">Add something you’ve been thinking about and keep it close.</p>

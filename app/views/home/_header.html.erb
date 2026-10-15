@@ -11,8 +11,14 @@
         <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
           <li class="nav-item"><%= link_to "Overview", root_path, class: "nav-link" %></li>
           <li class="nav-item"><%= link_to "Wishlists", wlists_path, class: "nav-link" %></li>
-          <li class="nav-item"><%= link_to "Wishes", wishes_path, class: "nav-link" %></li>
-          <li class="nav-item"><%= link_to "People", people_path, class: "nav-link" %></li>
+          <li class="nav-item"><%= link_to "Circle", user_path(current_user, anchor: "circle"), class: "nav-link" %></li>
+          <li class="nav-item">
+            <%= link_to notifications_path, class: "nav-link notification-nav", aria: { label: "Notifications" } do %>
+              <i class="bi bi-bell" aria-hidden="true"></i> Notifications
+              <% unread_count = current_user.received_notifications.unread.count %>
+              <% if unread_count.positive? %><span class="notification-count"><%= unread_count %></span><% end %>
+            <% end %>
+          </li>
           <li class="nav-item"><%= link_to "Profile", current_user, class: "nav-link" %></li>
           <li class="nav-item"><%= button_to "Sign out", destroy_user_session_path, method: :delete, class: "btn btn-outline-dark btn-sm" %></li>
         </ul>

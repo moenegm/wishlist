@@ -1,0 +1,24 @@
+<% owner = user_signed_in? && wlist.user_id == current_user.id %>
+<article class="card clickable-card h-100 border-0 p-4" role="link" tabindex="0" aria-label="Open wishlist: <%= wlist.title %>" data-controller="clickable-card" data-clickable-card-url-value="<%= wlist_path(wlist) %>">
+  <%= link_to "", wlist, class: "card-click-target", tabindex: "-1", aria: { hidden: true } %>
+  <div class="card-topline">
+    <span class="small text-muted"><%= pluralize(wlist.wishes.size, "wish") %></span>
+    <% if owner %>
+      <div class="card-controls">
+        <%= link_to edit_wlist_path(wlist), class: "icon-action", aria: { label: "Edit wishlist" }, title: "Edit wishlist" do %><i class="bi bi-pencil" aria-hidden="true"></i><% end %>
+      </div>
+    <% end %>
+  </div>
+  <p class="eyebrow mb-2"><%= wlist.wl_category.presence || "Wishlist" %></p>
+  <h2 class="h4 mb-2"><%= wlist.title %></h2>
+  <% if owner %>
+    <div class="card-bottom-row">
+      <%= button_to toggle_visibility_wlist_path(wlist), method: :patch, class: "visibility-toggle #{wlist.is_public? ? 'is-public' : 'is-private'}" do %>
+        <i class="bi bi-<%= wlist.is_public? ? 'globe2' : 'lock' %>" aria-hidden="true"></i><%= wlist.is_public? ? "Public" : "Private" %>
+      <% end %>
+      <%= render "shared/social_actions", item: wlist %>
+    </div>
+  <% else %>
+    <div class="card-bottom-row"><span></span><%= render "shared/social_actions", item: wlist %></div>
+  <% end %>
+</article>
