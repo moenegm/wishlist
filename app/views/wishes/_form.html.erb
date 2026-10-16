@@ -10,16 +10,31 @@
     <%= form.label :title, "What are you wishing for?", class: "form-label" %>
     <%= form.text_field :title, class: "form-control", placeholder: "A name you’ll remember", autofocus: true, required: true %>
   </div>
-  <div class="row g-3 mb-4">
-    <div class="col-12 col-md-7">
-      <%= form.label :location, "Where can you find it?", class: "form-label" %>
-      <%= form.text_field :location, class: "form-control", placeholder: "A shop or a link" %>
-    </div>
-    <div class="col-12 col-md-5">
-      <%= form.label :price, "Price", class: "form-label" %>
-      <%= form.number_field :price, class: "form-control", placeholder: "0.00", min: 0, step: 0.01 %>
-    </div>
-  </div>
+  <fieldset class="mb-4" data-controller="wish-options">
+    <legend class="h6">Where can you find it?</legend>
+    <p class="small text-muted">Compare up to three options. Store/link and price are optional.</p>
+    <% (1..3).each do |number| %>
+      <% suffix = number == 1 ? "" : "_#{number}" %>
+      <div class="wish-option-fields border rounded p-3 mb-3" data-wish-options-target="option">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold" data-option-label>Option <%= number %></span>
+          <% if number > 1 %><button type="button" class="btn btn-link btn-sm link-secondary" data-action="wish-options#remove" aria-label="Remove option <%= number %>">Remove</button><% end %>
+        </div>
+        <div class="row g-3">
+          <div class="col-12 col-md-7">
+            <%= form.label "location#{suffix}", "Store or link", class: "form-label" %>
+            <%= form.text_field "location#{suffix}", class: "form-control", placeholder: "A shop name or https://…" %>
+          </div>
+          <div class="col-12 col-md-5">
+            <%= form.label "price#{suffix}", "Price", class: "form-label" %>
+            <%= form.number_field "price#{suffix}", class: "form-control", placeholder: "0.00", min: 0, step: 0.01 %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    <button type="button" class="btn btn-outline-dark btn-sm" data-wish-options-target="addButton" data-action="wish-options#add" hidden>Add another option</button>
+    <p class="small text-muted mb-0" data-wish-options-target="limit" role="status" hidden>All three options added.</p>
+  </fieldset>
   <% if current_user.wlists.any? %>
     <div class="mb-4">
       <%= form.label :wlists_id, "Add it to", class: "form-label" %>

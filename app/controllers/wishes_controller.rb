@@ -60,6 +60,20 @@ class WishesController < ApplicationController
     end
   end
 
+  def update_fulfillment
+    @wish = current_user.wishes.find(params[:id])
+    fulfilled = params.require(:wish).fetch(:fulfilled)
+    unless [true, false, "true", "false", "1", "0"].include?(fulfilled)
+      return head :unprocessable_entity
+    end
+
+    @wish.update!(fulfilled: ActiveModel::Type::Boolean.new.cast(fulfilled))
+    respond_to do |format|
+      format.html { redirect_back fallback_location: wish_path(@wish), notice: @wish.fulfilled? ? "Wish marked fulfilled." : "Wish marked unfulfilled." }
+      format.json { render :show }
+    end
+  end
+
   private
     # Use callbacks to share common setup or constraints between actions.
     def set_wish
@@ -90,6 +104,6 @@ class WishesController < ApplicationController
 
     # Only allow a list of trusted parameters through.
     def wish_params
-      params.require(:wish).permit(:title, :location, :price, :wlists_id)
+      params.require(:wish).permit(:title, :location, :price, :location_2, :price_2, :location_3, :price_3, :wlists_id)
     end
 end

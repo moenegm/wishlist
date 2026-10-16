@@ -1,0 +1,12 @@
+<% options = wish.purchase_options %>
+<% if options.any? %>
+  <div class="wish-purchase-options my-3">
+    <% options.each_with_index do |option, index| %>
+      <div class="wish-purchase-option py-2">
+        <% if options.size > 1 %><span class="small text-muted">Option <%= index + 1 %></span><% end %>
+        <% if option[:location].present? %><div class="wish-option-location"><%= wish_option_location(option[:location]) %></div><% end %>
+        <% if option[:price].present? %><div class="fw-semibold"><%= number_to_currency(option[:price]) %></div><% end %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

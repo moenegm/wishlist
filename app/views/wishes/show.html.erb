@@ -1,7 +1,7 @@
 <% content_for :title, "#{@wish.title} · Wishwell" %>
 <section class="page-section" data-controller="comments">
   <%= link_to "← #{@wish.wlist.title}", wlist_path(@wish.wlist), class: "small text-decoration-none fw-semibold" %>
-  <article class="card wish-detail-card border-0 p-4 p-md-5 mt-4">
+  <article class="card wish-detail-card <%= "wish-fulfilled" if @wish.fulfilled? %> border-0 p-4 p-md-5 mt-4">
     <div class="d-flex justify-content-between align-items-start gap-3">
       <div>
         <p class="eyebrow mb-2">A wish in <%= link_to @wish.wlist.title, @wish.wlist, class: "text-decoration-none" %></p>
@@ -11,10 +11,8 @@
         <%= link_to edit_wish_path(@wish), class: "icon-action", aria: { label: "Edit wish" }, title: "Edit wish" do %><i class="bi bi-pencil" aria-hidden="true"></i><% end %>
       <% end %>
     </div>
-    <div class="d-flex flex-wrap gap-4 mt-4 mb-5">
-      <% if @wish.price.present? %><div><p class="small text-muted mb-1">Price</p><p class="h5 mb-0"><%= number_to_currency(@wish.price) %></p></div><% end %>
-      <% if @wish.location.present? %><div><p class="small text-muted mb-1">Where to find it</p><p class="h5 mb-0"><%= @wish.location %></p></div><% end %>
-    </div>
+    <div class="mt-3"><%= render "wishes/fulfillment", wish: @wish %></div>
+    <%= render "wishes/purchase_options", wish: @wish %>
     <div class="d-flex justify-content-between align-items-end gap-3 border-top pt-4">
       <% if @own_wish %><%= button_to "Remove wish", @wish, method: :delete, class: "btn btn-link link-secondary p-0 text-decoration-none", form: { data: { turbo_confirm: "Remove this wish from your list?" } } %><% else %><span></span><% end %>
       <%= render "shared/social_actions", item: @wish %>

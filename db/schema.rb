@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_15_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_16_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -119,6 +119,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_15_000002) do
     t.datetime "updated_at", null: false
     t.bigint "wlists_id", null: false
     t.bigint "user_id", null: false
+    t.boolean "fulfilled", default: false, null: false
+    t.string "location_2"
+    t.decimal "price_2"
+    t.string "location_3"
+    t.decimal "price_3"
     t.index ["user_id"], name: "index_wishes_on_user_id"
     t.index ["wlists_id"], name: "index_wishes_on_wlists_id"
   end

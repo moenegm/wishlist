@@ -1,0 +1,11 @@
+<% if user_signed_in? && wish.user_id == current_user.id %>
+  <%= button_to fulfillment_wish_path(wish), method: :patch,
+      params: { wish: { fulfilled: !wish.fulfilled? } },
+      class: "fulfillment-toggle #{'is-fulfilled' if wish.fulfilled?}",
+      aria: { label: wish.fulfilled? ? "Mark wish unfulfilled" : "Mark wish fulfilled", pressed: wish.fulfilled? } do %>
+    <i class="bi bi-check-circle<%= '-fill' if wish.fulfilled? %>" aria-hidden="true"></i>
+    <%= wish.fulfilled? ? "Fulfilled" : "Mark fulfilled" %>
+  <% end %>
+<% elsif wish.fulfilled? %>
+  <span class="fulfillment-status"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Fulfilled</span>
+<% end %>

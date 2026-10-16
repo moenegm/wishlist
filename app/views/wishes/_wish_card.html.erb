@@ -1,6 +1,6 @@
 <% owner = user_signed_in? && wish.user_id == current_user.id %>
 <div class="card-stack" data-controller="comments">
-<article class="card clickable-card border-0 p-4" role="link" tabindex="0" aria-label="Open wish: <%= wish.title %>" data-controller="clickable-card" data-clickable-card-url-value="<%= wish_path(wish) %>">
+<article class="card clickable-card <%= "wish-fulfilled" if wish.fulfilled? %> border-0 p-4" role="link" tabindex="0" aria-label="Open wish: <%= wish.title %>" data-controller="clickable-card" data-clickable-card-url-value="<%= wish_path(wish) %>">
   <%= link_to "", wish, class: "card-click-target", tabindex: "-1", aria: { hidden: true } %>
   <div class="card-topline">
     <span class="small text-muted"><%= wish.wlist.title %></span>
@@ -8,9 +8,10 @@
       <div class="card-controls"><%= link_to edit_wish_path(wish), class: "icon-action", aria: { label: "Edit wish" }, title: "Edit wish" do %><i class="bi bi-pencil" aria-hidden="true"></i><% end %></div>
     <% end %>
   </div>
+  <div class="mb-2"><%= render "wishes/fulfillment", wish: wish %></div>
   <h2 class="h4 mb-2"><%= wish.title %></h2>
-  <% if wish.location.present? %><p class="text-muted mb-2"><i class="bi bi-geo-alt me-1" aria-hidden="true"></i><%= wish.location %></p><% end %>
-  <div class="card-bottom-row"><span class="fw-semibold"><%= number_to_currency(wish.price) if wish.price.present? %></span><%= render "shared/social_actions", item: wish %></div>
+  <%= render "wishes/purchase_options", wish: wish %>
+  <div class="card-bottom-row"><span></span><%= render "shared/social_actions", item: wish %></div>
 </article>
 <%= render "shared/comment_preview", item: wish %>
 </div>
