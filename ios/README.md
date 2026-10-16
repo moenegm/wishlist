@@ -47,3 +47,11 @@ DATABASE_URL=postgresql://localhost/wishwell_development bin/rails runner ios/se
 ```
 
 Run local Rails on port 3000. The `WishwellUITests` target signs in as `ios-qa@example.test` with the disposable password defined in the preview seed. It creates a new three-option wish, fulfills it, and verifies Keychain restoration after relaunch. Each run adds a local QA wish; it never logs into production. Use `xcodebuild test` with an available simulator destination or Product → Test in Xcode. Debug `--ui-testing` ignores an existing token for a local host so the sign-in flow is exercised; it does not bypass authentication.
+
+## Installing a development build on a physical iPad/iPhone
+
+Connect and trust the device, enable Developer Mode, and use your Apple Development team in Xcode. For a build that runs directly from the Home Screen, set the Debug build setting `WISHWELL_DEVELOPMENT_API_URL` to a reachable address such as `http://YOUR-MAC.local:3000`. This is embedded in the preview build; it does not require launch environment variables from Xcode. Release builds ignore this development override.
+
+Run local Rails with `RAILS_DEVELOPMENT_HOSTS=YOUR-MAC.local` and bind to a LAN interface, e.g. `bin/rails server -b 0.0.0.0 -p 3000`, using only your local development/preview database. Keep the Mac awake and the device on the same network. Allow local-network access when iOS requests it. The app includes a local-network usage description and allows local networking through ATS; it does not disable HTTPS requirements for general internet requests.
+
+Development builds use the local accounts/database. They are not connected to production merely because they are installed on a physical device. A TestFlight/production build requires the production API rollout described above.

@@ -27,6 +27,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to your Wishwell preview server on your local network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -47,5 +49,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>WishwellDevelopmentAPIURL</key>
+	<string>$(WISHWELL_DEVELOPMENT_API_URL)</string>
 </dict>
 </plist>

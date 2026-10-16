@@ -38,7 +38,9 @@ struct SessionKeychain {
 
     init() {
         #if DEBUG
-        let address = ProcessInfo.processInfo.environment["WISHWELL_API_URL"] ?? "http://localhost:3000"
+        let embedded = Bundle.main.object(forInfoDictionaryKey: "WishwellDevelopmentAPIURL") as? String
+        let configured = embedded.flatMap { $0.isEmpty ? nil : $0 }
+        let address = ProcessInfo.processInfo.environment["WISHWELL_API_URL"] ?? configured ?? "http://localhost:3000"
         #else
         let address = "https://wishwell-22rh.onrender.com"
         #endif
