@@ -44,3 +44,9 @@ The free setup is suited to a portfolio demo, not dependable production hosting.
 ## Configuration notes
 
 Local development uses disk storage. Production defaults to disk storage too; set `ACTIVE_STORAGE_SERVICE=supabase` only after adding the Supabase S3 settings above. Database connection details are supplied through `DATABASE_URL` in production. Never commit service credentials or production secrets.
+
+## Native iPhone and iPad app
+
+The SwiftUI app lives in [`ios/Wishwell`](ios/Wishwell) in this same repository. Open `ios/Wishwell/Wishwell.xcodeproj` in Xcode. See [local setup and release notes](ios/README.md) and the [mobile API contract](docs/mobile-api.md). Mobile uses existing Rails accounts, PostgreSQL data, and Active Storage; it contains no Supabase service credentials.
+
+The new API is disabled in production unless explicitly enabled with `MOBILE_API_ENABLED=true` after review and migration. Debug app builds use local Rails; release builds use the existing production host.

@@ -6,6 +6,7 @@ class Wish < ApplicationRecord
   has_many :notifications, as: :notifiable, dependent: :destroy
 
   validates :title, presence: true
+  validates :fulfilled, inclusion: { in: [true, false] }
   validates :price, :price_2, :price_3, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   # Retain the original fields as option one so existing wishes need no backfill.
   def purchase_options

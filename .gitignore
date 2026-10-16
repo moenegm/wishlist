@@ -29,3 +29,9 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Local Xcode state and build products.
+**/xcuserdata/
+**/*.xcuserstate
+/ios/**/build/
+/ios/**/DerivedData/

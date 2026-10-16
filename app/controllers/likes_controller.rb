@@ -4,19 +4,10 @@ class LikesController < ApplicationController
   def create
     likeable = find_likeable
     ensure_likeable_is_visible!(likeable)
-    like = current_user.likes.find_or_initialize_by(likeable: likeable)
-    new_like = like.new_record?
-
-    if like.save
-      owner = likeable_owner(likeable)
-      if new_like && owner != current_user
-        event_type = likeable.is_a?(Wish) ? "liked_wish" : "liked_wlist"
-        Notification.create!(recipient: owner, actor: current_user, event_type: event_type, notifiable: likeable)
-      end
-      redirect_back fallback_location: social_fallback(likeable)
-    else
-      redirect_back fallback_location: social_fallback(likeable), alert: "That like couldn’t be saved."
-    end
+    SocialActions.like(current_user, likeable)
+    redirect_back fallback_location: social_fallback(likeable)
+  rescue ActiveRecord::RecordInvalid => error
+    redirect_back fallback_location: social_fallback(likeable), alert: error.record.errors.full_messages.to_sentence
   end
 
   def destroy
@@ -36,10 +27,7 @@ class LikesController < ApplicationController
   end
 
   def ensure_likeable_is_visible!(likeable)
-    list = likeable.is_a?(Wlist) ? likeable : likeable.wlist
-    return if list.is_public? || list.user_id == current_user.id
-
-    raise ActiveRecord::RecordNotFound
+    ContentAccess.ensure!(likeable, current_user)
   end
 
   def likeable_owner(likeable)

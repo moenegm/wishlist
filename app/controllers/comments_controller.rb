@@ -4,18 +4,10 @@ class CommentsController < ApplicationController
   def create
     commentable = find_commentable
     ensure_commentable_is_visible!(commentable)
-    comment = current_user.comments.new(commentable: commentable, body: params.dig(:comment, :body))
-
-    if comment.save
-      owner = commentable_owner(commentable)
-      if owner != current_user
-        event_type = commentable.is_a?(Wish) ? "commented_wish" : "commented_wlist"
-        Notification.create!(recipient: owner, actor: current_user, event_type: event_type, notifiable: comment)
-      end
-      redirect_back fallback_location: social_fallback(commentable)
-    else
-      redirect_back fallback_location: social_fallback(commentable), alert: comment.errors.full_messages.to_sentence
-    end
+    SocialActions.comment(current_user, commentable, params.dig(:comment, :body))
+    redirect_back fallback_location: social_fallback(commentable)
+  rescue ActiveRecord::RecordInvalid => error
+    redirect_back fallback_location: social_fallback(commentable), alert: error.record.errors.full_messages.to_sentence
   end
 
   def destroy
@@ -35,10 +27,7 @@ class CommentsController < ApplicationController
   end
 
   def ensure_commentable_is_visible!(commentable)
-    list = commentable.is_a?(Wlist) ? commentable : commentable.wlist
-    return if list.is_public? || list.user_id == current_user.id
-
-    raise ActiveRecord::RecordNotFound
+    ContentAccess.ensure!(commentable, current_user)
   end
 
   def commentable_owner(commentable)

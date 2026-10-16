@@ -7,7 +7,18 @@ class Notification < ApplicationRecord
 
   scope :unread, -> { where(read_at: nil) }
 
+  def target_list
+    target = notifiable
+    target = target.commentable if target.is_a?(Comment)
+    target.is_a?(Wish) ? target.wlist : (target if target.is_a?(Wlist))
+  end
+
+  def content_visible?
+    event_type == "followed" || (target_list && ContentAccess.visible?(target_list, recipient))
+  end
+
   def message
+    return "An update is no longer available." unless content_visible?
     name = [actor.first_name, actor.last_name].compact_blank.join(" ").presence || "A Wishwell member"
     subject = case notifiable
     when Wish then "your wish ‘#{notifiable.title}’"
@@ -31,6 +42,7 @@ class Notification < ApplicationRecord
   end
 
   def destination_path
+    return Rails.application.routes.url_helpers.user_path(actor) unless content_visible?
     return Rails.application.routes.url_helpers.user_path(actor) if event_type == "followed"
 
     target_list = case notifiable

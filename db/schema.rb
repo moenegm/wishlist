@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_16_000002) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_16_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -80,6 +80,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_16_000002) do
     t.index ["user_id"], name: "index_likes_on_user_id"
   end
 
+  create_table "mobile_sessions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "token_digest", null: false
+    t.string "password_digest", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["token_digest"], name: "index_mobile_sessions_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_mobile_sessions_on_user_id"
+  end
+
   create_table "notifications", force: :cascade do |t|
     t.bigint "recipient_id", null: false
     t.bigint "actor_id", null: false
@@ -144,6 +155,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_16_000002) do
   add_foreign_key "follows", "users", column: "followed_user_id"
   add_foreign_key "follows", "users", column: "follower_id"
   add_foreign_key "likes", "users"
+  add_foreign_key "mobile_sessions", "users"
   add_foreign_key "notifications", "users", column: "actor_id"
   add_foreign_key "notifications", "users", column: "recipient_id"
   add_foreign_key "wlists", "users"

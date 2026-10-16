@@ -22,9 +22,17 @@ class WishesController < ApplicationController
     @wish = current_user.wishes.new(wish_params.except(:wlists_id))
     assign_wlist
 
-    respond_to do |format|
+    saved = Wish.transaction do
       if @wish.save
-        notify_followers_of_public_list if @wish.wlist.is_public?
+        notify_followers_of_public_list
+        true
+      else
+        false
+      end
+    end
+
+    respond_to do |format|
+      if saved
         format.html { redirect_to wish_url(@wish), notice: "Wish was successfully created." }
         format.json { render :show, status: :created, location: @wish }
       else
@@ -97,9 +105,7 @@ class WishesController < ApplicationController
     end
 
     def notify_followers_of_public_list
-      @wish.wlist.user.followers.where.not(id: current_user.id).find_each do |follower|
-        Notification.create!(recipient: follower, actor: current_user, event_type: "added_wish", notifiable: @wish)
-      end
+      SocialActions.notify_public_wish(@wish)
     end
 
     # Only allow a list of trusted parameters through.

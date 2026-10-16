@@ -8,4 +8,5 @@ class Wlist < ApplicationRecord
   scope :publicly_visible, -> { where(is_public: true) }
 
   validates :title, presence: true
+  validates :is_public, inclusion: { in: [true, false] }
 end
