@@ -1,0 +1,15 @@
+<% comments = item.comments.includes(:user).order(created_at: :desc).to_a %>
+<% if comments.any? %>
+<div class="comments-preview <%= local_assigns[:class] %>" aria-label="Recent comments on <%= item.title %>">
+  <div class="comments-preview-list">
+    <% comments.first(5).each do |comment| %>
+      <p class="comments-preview-line"><strong><%= comment.user.first_name.presence || "Wishwell member" %></strong> <%= comment.body %></p>
+    <% end %>
+  </div>
+  <% if comments.size > 5 %>
+    <button type="button" class="comments-preview-more" data-action="click->comments#open">
+      Show all <%= pluralize(comments.size, "comment") %> <i class="bi bi-chevron-down" aria-hidden="true"></i>
+    </button>
+  <% end %>
+</div>
+<% end %>

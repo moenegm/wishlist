@@ -1,5 +1,6 @@
 <% owner = user_signed_in? && wlist.user_id == current_user.id %>
-<article class="card clickable-card h-100 border-0 p-4" role="link" tabindex="0" aria-label="Open wishlist: <%= wlist.title %>" data-controller="clickable-card" data-clickable-card-url-value="<%= wlist_path(wlist) %>">
+<div class="card-stack" data-controller="comments">
+<article class="card clickable-card border-0 p-4" role="link" tabindex="0" aria-label="Open wishlist: <%= wlist.title %>" data-controller="clickable-card" data-clickable-card-url-value="<%= wlist_path(wlist) %>">
   <%= link_to "", wlist, class: "card-click-target", tabindex: "-1", aria: { hidden: true } %>
   <div class="card-topline">
     <span class="small text-muted"><%= pluralize(wlist.wishes.size, "wish") %></span>
@@ -22,3 +23,5 @@
     <div class="card-bottom-row"><span></span><%= render "shared/social_actions", item: wlist %></div>
   <% end %>
 </article>
+<%= render "shared/comment_preview", item: wlist %>
+</div>

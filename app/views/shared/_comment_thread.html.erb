@@ -1,0 +1,54 @@
+<% comments = item.comments.includes(:user).order(:created_at).to_a %>
+<div class="comments-widget">
+  <button type="button" class="social-action" data-action="click->comments#open" aria-label="Open <%= pluralize(comments.size, 'comment') %> on <%= item.title %>" title="Comments">
+    <i class="bi bi-chat" aria-hidden="true"></i><span><%= comments.size %></span>
+  </button>
+  <dialog class="comments-dialog" data-comments-target="dialog" data-action="click->comments#closeOnBackdrop" aria-labelledby="<%= dom_id(item, :comments_title) %>">
+    <div class="comments-dialog-header">
+      <div><p class="eyebrow mb-1">COMMENTS</p><h2 class="h4 mb-0" id="<%= dom_id(item, :comments_title) %>"><%= item.title %></h2></div>
+      <button type="button" class="icon-action" data-action="comments#close" aria-label="Close comments"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+    <div class="comments-dialog-body">
+      <% if comments.any? %>
+        <div class="comment-list">
+          <% comments.first(5).each do |comment| %>
+            <div class="comment-entry">
+              <p class="mb-0"><strong><%= comment.user.first_name.presence || "Wishwell member" %></strong> <%= comment.body %></p>
+              <% if user_signed_in? && comment.user_id == current_user.id %>
+                <%= button_to "Delete", comment_path(comment), method: :delete, class: "comment-delete", form: { data: { turbo_confirm: "Delete this comment?" } } %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+        <% if comments.size > 5 %>
+          <details class="more-comments">
+            <summary>Show <%= pluralize(comments.size - 5, "more comment") %> <i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
+            <div class="comment-list more-comment-list">
+              <% comments.drop(5).each do |comment| %>
+                <div class="comment-entry">
+                  <p class="mb-0"><strong><%= comment.user.first_name.presence || "Wishwell member" %></strong> <%= comment.body %></p>
+                  <% if user_signed_in? && comment.user_id == current_user.id %>
+                    <%= button_to "Delete", comment_path(comment), method: :delete, class: "comment-delete", form: { data: { turbo_confirm: "Delete this comment?" } } %>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          </details>
+        <% end %>
+      <% else %>
+        <p class="small text-muted mb-3">No comments yet. Start a kind conversation.</p>
+      <% end %>
+
+      <% if user_signed_in? %>
+        <%= form_with url: comments_path, class: "comment-form" do %>
+          <%= hidden_field_tag :commentable_type, item.class.name %>
+          <%= hidden_field_tag :commentable_id, item.id %>
+          <%= text_field_tag "comment[body]", nil, class: "form-control", maxlength: 500, placeholder: "Leave a kind comment…", aria: { label: "Comment" } %>
+          <%= submit_tag "Send", class: "btn btn-sm btn-dark" %>
+        <% end %>
+      <% else %>
+        <%= link_to "Sign in to comment", new_user_session_path, class: "small fw-semibold" %>
+      <% end %>
+    </div>
+  </dialog>
+</div>

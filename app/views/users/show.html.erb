@@ -28,7 +28,7 @@
     <% if @own_profile %><%= link_to "Manage all lists", wlists_path, class: "small text-decoration-none fw-semibold" %><% end %>
   </div>
   <% if @public_wlists.any? %>
-    <div class="row g-3">
+    <div class="row g-3 card-grid">
       <% @public_wlists.each do |wlist| %><div class="col-12 col-md-6 col-lg-4"><%= render "wlists/wlist_card", wlist: wlist %></div><% end %>
     </div>
   <% else %>

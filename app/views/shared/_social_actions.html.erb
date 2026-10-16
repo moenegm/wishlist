@@ -10,29 +10,5 @@
     <%= link_to new_user_session_path, class: "social-action", aria: { label: "Sign in to like" }, title: "Sign in to like" do %><i class="bi bi-heart" aria-hidden="true"></i><span><%= item.likes.size %></span><% end %>
   <% end %>
 
-  <details class="comment-thread">
-    <summary class="social-action" aria-label="Show comments"><i class="bi bi-chat" aria-hidden="true"></i><span><%= item.comments.size %></span></summary>
-    <div class="comment-panel">
-      <div class="comment-list">
-        <% item.comments.includes(:user).order(:created_at).each do |comment| %>
-          <div class="comment-entry">
-            <p class="mb-0"><strong><%= comment.user.first_name.presence || "Wishwell member" %></strong> <%= comment.body %></p>
-            <% if user_signed_in? && comment.user_id == current_user.id %>
-              <%= button_to "Delete", comment_path(comment), method: :delete, class: "comment-delete", form: { data: { turbo_confirm: "Delete this comment?" } } %>
-            <% end %>
-          </div>
-        <% end %>
-      </div>
-      <% if user_signed_in? %>
-        <%= form_with url: comments_path, class: "comment-form" do %>
-          <%= hidden_field_tag :commentable_type, item.class.name %>
-          <%= hidden_field_tag :commentable_id, item.id %>
-          <%= text_field_tag "comment[body]", nil, class: "form-control", maxlength: 500, placeholder: "Leave a kind comment…", aria: { label: "Comment" } %>
-          <%= submit_tag "Send", class: "btn btn-sm btn-dark" %>
-        <% end %>
-      <% else %>
-        <%= link_to "Sign in to comment", new_user_session_path, class: "small fw-semibold" %>
-      <% end %>
-    </div>
-  </details>
+  <%= render "shared/comment_thread", item: item %>
 </div>

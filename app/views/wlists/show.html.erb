@@ -1,5 +1,5 @@
 <% content_for :title, "#{@wlist.title} · Wishwell" %>
-<section class="page-section">
+<section class="page-section" data-controller="comments">
   <% if @own_wlist %>
     <%= link_to "← All wishlists", wlists_path, class: "small text-decoration-none fw-semibold" %>
   <% else %>
@@ -22,9 +22,10 @@
       <%= render "shared/social_actions", item: @wlist %>
     </div>
   </div>
+  <%= render "shared/comment_preview", item: @wlist, class: "detail-comments-preview mb-5" %>
 
   <% if @wlist.wishes.any? %>
-    <div class="row g-3">
+    <div class="row g-3 card-grid">
       <% @wlist.wishes.order(created_at: :desc).each do |wish| %>
         <div class="col-12 col-md-6 col-lg-4"><%= render "wishes/wish_card", wish: wish %></div>
       <% end %>

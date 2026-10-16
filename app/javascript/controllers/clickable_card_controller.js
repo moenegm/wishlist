@@ -14,7 +14,7 @@ export default class extends Controller {
   }
 
   openCard = (event) => {
-    if (event.target.closest("a, button, form, details, summary, input, textarea, select, label")) return
+    if (event.target.closest("a, button, form, details, summary, input, textarea, select, label, dialog")) return
     window.location.assign(this.urlValue)
   }
 

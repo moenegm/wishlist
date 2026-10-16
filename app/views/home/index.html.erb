@@ -1,46 +1,88 @@
+<% display_name = [current_user.first_name, current_user.last_name].compact_blank.join(" ").presence || "Wishwell member" %>
 <% content_for :title, "Your space · Wishwell" %>
 <section class="page-section">
-  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-5">
+  <div class="profile-heading mb-4">
+    <div class="profile-identity">
+      <% if current_user.avatar.attached? %>
+        <%= image_tag current_user.avatar, class: "profile-avatar", alt: "Profile photo for #{display_name}" %>
+      <% else %>
+        <div class="profile-avatar profile-avatar-fallback" aria-hidden="true"><%= current_user.first_name.to_s.first&.upcase || "W" %></div>
+      <% end %>
+      <div>
+        <p class="eyebrow mb-1">YOUR LITTLE CORNER</p>
+        <h1 class="page-title"><%= display_name %></h1>
+        <p class="text-muted mb-1"><%= current_user.email %></p>
+        <p class="small text-muted mb-0"><%= pluralize(@public_wlists.size, "public wishlist") %> · <%= pluralize(@followers.size, "follower") %></p>
+      </div>
+    </div>
+    <div class="profile-actions d-flex flex-column align-items-start align-items-md-end gap-2">
+      <p class="profile-share-link mb-0">Your public profile: <code><%= request.base_url %><%= user_path(current_user) %></code></p>
+      <%= link_to "Edit profile", edit_user_registration_path, class: "btn btn-outline-dark" %>
+    </div>
+  </div>
+
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
     <div>
-      <p class="eyebrow">A little room for what you love</p>
-      <h1 class="page-title"><%= current_user.first_name.presence || "Welcome back" %>.</h1>
+      <p class="eyebrow">A LITTLE ROOM FOR WHAT YOU LOVE</p>
+      <h2 class="page-title"><%= current_user.first_name.presence || "Welcome back" %>.</h2>
       <p class="page-subtitle mb-0">Keep the things you’re looking forward to, all in one place.</p>
     </div>
     <%= link_to(@wlists.any? ? "Add a wish" : "Create a wishlist", @wlists.any? ? new_wish_path : new_wlist_path, class: "btn btn-dark") %>
   </div>
 
-  <div class="row g-3 mb-5">
+  <div class="row g-3 mb-5" aria-label="Your overview">
     <div class="col-6 col-md-3"><div class="card border-0 p-3 p-md-4 h-100"><p class="small text-muted mb-1">Wishlists</p><p class="h2 mb-0"><%= @wlists.size %></p></div></div>
     <div class="col-6 col-md-3"><div class="card border-0 p-3 p-md-4 h-100"><p class="small text-muted mb-1">Wishes saved</p><p class="h2 mb-0"><%= current_user.wishes.count %></p></div></div>
-    <div class="col-6 col-md-3"><%= link_to user_path(current_user, anchor: "circle"), class: "card border-0 p-3 p-md-4 h-100 text-decoration-none text-dark" do %><p class="small text-muted mb-1">Your circle</p><p class="h2 mb-0"><%= current_user.following_users.count %></p><% end %></div>
-    <div class="col-6 col-md-3"><%= link_to notifications_path, class: "card border-0 p-3 p-md-4 h-100 text-decoration-none text-dark" do %><p class="small text-muted mb-1">Notifications</p><p class="h2 mb-0"><%= current_user.received_notifications.unread.count %></p><% end %></div>
+    <div class="col-6 col-md-3"><a href="#circle" class="card border-0 p-3 p-md-4 h-100 text-decoration-none text-dark"><p class="small text-muted mb-1">Following</p><p class="h2 mb-0"><%= @following.size %></p></a></div>
+    <div class="col-6 col-md-3"><%= link_to notifications_path, class: "card border-0 p-3 p-md-4 h-100 text-decoration-none text-dark" do %><p class="small text-muted mb-1">Unread updates</p><p class="h2 mb-0"><%= current_user.received_notifications.unread.count %></p><% end %></div>
   </div>
 
   <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-    <div><p class="eyebrow mb-1">Your collections</p><h2 class="h3 mb-0">Wishlists</h2></div>
-    <%= link_to "See all", wlists_path, class: "small fw-semibold text-decoration-none" if @wlists.any? %>
+    <div><p class="eyebrow mb-1">YOUR COLLECTIONS</p><h2 class="h3 mb-0">Wishlists</h2></div>
+    <%= link_to "Manage all", wlists_path, class: "small fw-semibold text-decoration-none" if @wlists.any? %>
   </div>
   <% if @wlists.any? %>
-    <div class="row g-3 mb-5">
+    <div class="row g-3 mb-5 card-grid">
       <% @wlists.first(3).each do |wlist| %><div class="col-12 col-md-6 col-lg-4"><%= render "wlists/wlist_card", wlist: wlist %></div><% end %>
-      <div class="col-12 col-md-6 col-lg-4">
-        <%= link_to new_wlist_path, class: "empty-state d-flex flex-column justify-content-center align-items-start h-100 p-4 text-decoration-none" do %>
-          <span class="empty-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span><span class="fw-semibold">Make another list</span><span class="small text-muted mt-1">Start a new collection</span>
-        <% end %>
-      </div>
+      <div class="col-12 col-md-6 col-lg-4"><%= link_to new_wlist_path, class: "empty-state d-flex flex-column justify-content-center align-items-start h-100 p-4 text-decoration-none" do %><span class="empty-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span><span class="fw-semibold">Make another list</span><span class="small text-muted mt-1">Start a new collection</span><% end %></div>
     </div>
   <% else %>
     <div class="empty-state p-4 p-md-5 mb-5"><span class="empty-icon"><i class="bi bi-stars" aria-hidden="true"></i></span><h3 class="h4">Start with a wishlist</h3><p class="text-muted mb-4">Make a list for a special day, a home project, or all the little things you love.</p><%= link_to "Create your first wishlist", new_wlist_path, class: "btn btn-dark" %></div>
   <% end %>
 
   <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-    <div><p class="eyebrow mb-1">Saved most recently</p><h2 class="h3 mb-0">Recent wishes</h2></div>
+    <div><p class="eyebrow mb-1">SAVED MOST RECENTLY</p><h2 class="h3 mb-0">Recent wishes</h2></div>
   </div>
   <% if @wishes.any? %>
-    <div class="row g-3">
-      <% @wishes.each do |wish| %><div class="col-12 col-md-6 col-lg-4"><%= render "wishes/wish_card", wish: wish %></div><% end %>
-    </div>
+    <div class="row g-3 mb-5 card-grid"><% @wishes.each do |wish| %><div class="col-12 col-md-6 col-lg-4"><%= render "wishes/wish_card", wish: wish %></div><% end %></div>
   <% else %>
-    <p class="text-muted">Your new wishes will show up here.</p>
+    <p class="text-muted mb-5">Your new wishes will show up here.</p>
   <% end %>
+
+  <section class="circle-section" id="circle">
+    <div class="mb-3"><p class="eyebrow mb-1">YOUR PEOPLE</p><h2 class="h3 mb-1">Your circle</h2><p class="text-muted mb-0">Find friends, follow them, and keep up with the lists they choose to share.</p></div>
+    <%= form_with url: root_path, method: :get, class: "people-search mb-4", id: "circle-search" do |form| %>
+      <%= form.label :q, "Find someone", class: "visually-hidden" %>
+      <%= form.search_field :q, value: @query, class: "form-control", placeholder: "Search by first or last name" %>
+      <%= form.submit "Search", class: "btn btn-dark" %>
+    <% end %>
+    <% if @query.present? %>
+      <div class="row g-2 mb-4">
+        <% if @people.any? %>
+          <% @people.each do |person| %><% follow = current_user.follows_as_follower.find_by(followed_user: person) %><div class="col-12 col-md-6"><%= render "users/person_row", person: person, follow: follow %></div><% end %>
+        <% else %>
+          <div class="col-12"><p class="empty-state p-3 mb-0">No one found by that name. Try another first or last name.</p></div>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="row g-3">
+      <div class="col-12 col-md-6"><details class="circle-list" <%= "open" if @query.blank? && @followers.any? %>><summary><span>Followers</span><span class="circle-count"><%= @followers.size %></span></summary><div class="circle-list-items"><% if @followers.any? %><% @followers.each do |person| %><% follow = current_user.follows_as_follower.find_by(followed_user: person) %><%= render "users/person_row", person: person, follow: follow %><% end %><% else %><p class="small text-muted mb-0">Your followers will show up here.</p><% end %></div></details></div>
+      <div class="col-12 col-md-6"><details class="circle-list" <%= "open" if @query.blank? && @following.any? %>><summary><span>Following</span><span class="circle-count"><%= @following.size %></span></summary><div class="circle-list-items"><% if @following.any? %><% @following.each do |person| %><% follow = current_user.follows_as_follower.find_by(followed_user: person) %><%= render "users/person_row", person: person, follow: follow %><% end %><% else %><p class="small text-muted mb-0">Search for a friend above to add them to your circle.</p><% end %></div></details></div>
+    </div>
+  </section>
+  <footer class="profile-page-footer d-none d-lg-flex">
+    <span class="small text-muted">All caught up?</span>
+    <%= button_to "Sign out", destroy_user_session_path, method: :delete, class: "btn btn-outline-dark btn-sm" %>
+  </footer>
 </section>

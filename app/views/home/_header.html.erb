@@ -3,24 +3,24 @@
     <%= link_to root_path, class: "navbar-brand site-brand" do %>
       <span class="brand-mark"><i class="bi bi-heart-fill" aria-hidden="true"></i></span>Wishwell
     <% end %>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNavigation" aria-controls="siteNavigation" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
+    <div class="site-nav-controls">
+      <% if user_signed_in? %>
+        <%= link_to notifications_path, class: "nav-link notification-nav", aria: { label: "Notifications", title: "Notifications" } do %>
+          <i class="bi bi-bell" aria-hidden="true"></i>
+          <% unread_count = current_user.received_notifications.unread.count %>
+          <% if unread_count.positive? %><span class="notification-count"><%= unread_count %></span><% end %>
+        <% end %>
+      <% end %>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNavigation" aria-controls="siteNavigation" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
     <div class="collapse navbar-collapse" id="siteNavigation">
       <% if user_signed_in? %>
-        <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
-          <li class="nav-item"><%= link_to "Overview", root_path, class: "nav-link" %></li>
+        <ul class="navbar-nav align-items-lg-center gap-lg-1">
+          <li class="nav-item"><%= link_to "Profile", root_path, class: "nav-link" %></li>
           <li class="nav-item"><%= link_to "Wishlists", wlists_path, class: "nav-link" %></li>
-          <li class="nav-item"><%= link_to "Circle", user_path(current_user, anchor: "circle"), class: "nav-link" %></li>
-          <li class="nav-item">
-            <%= link_to notifications_path, class: "nav-link notification-nav", aria: { label: "Notifications" } do %>
-              <i class="bi bi-bell" aria-hidden="true"></i> Notifications
-              <% unread_count = current_user.received_notifications.unread.count %>
-              <% if unread_count.positive? %><span class="notification-count"><%= unread_count %></span><% end %>
-            <% end %>
-          </li>
-          <li class="nav-item"><%= link_to "Profile", current_user, class: "nav-link" %></li>
-          <li class="nav-item"><%= button_to "Sign out", destroy_user_session_path, method: :delete, class: "btn btn-outline-dark btn-sm" %></li>
+          <li class="nav-item nav-signout-mobile d-lg-none"><%= button_to "Sign out", destroy_user_session_path, method: :delete, class: "btn btn-outline-dark btn-sm" %></li>
         </ul>
       <% else %>
         <div class="ms-auto d-flex align-items-center gap-2 py-2 py-lg-0">
