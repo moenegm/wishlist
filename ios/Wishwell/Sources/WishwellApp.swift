@@ -198,7 +198,7 @@ struct AuthenticationView: View {
                     Button(registering ? "Already a member? Sign in" : "New to Wishwell? Create an account") { registering.toggle() }
                     if !registering { Button("Forgot password?") { recovery = true }.font(.footnote) }
                     #if DEBUG
-                    Text("Local development · \(store.baseURL.host ?? "")").font(.caption2).foregroundStyle(.secondary)
+                    Text(store.baseURL.host == "wishwell-22rh.onrender.com" ? "Live Wishwell" : "Development preview").font(.caption2).foregroundStyle(.secondary)
                     #endif
                 }.padding(32).frame(maxWidth: 480).frame(maxWidth: .infinity)
             }.background(Theme.background)

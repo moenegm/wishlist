@@ -46,7 +46,8 @@ struct SessionKeychain {
         #endif
         baseURL = URL(string: address)!
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 120
         config.httpCookieStorage = nil
         config.urlCache = nil
         session = URLSession(configuration: config)

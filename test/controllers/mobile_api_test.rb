@@ -27,6 +27,7 @@ class MobileApiTest < ActionDispatch::IntegrationTest
     get "/api/v1/me", headers: auth(token)
     assert_response :success
     assert_equal @owner.email, response.parsed_body["email"]
+    assert_equal "no-store", response.headers["Cache-Control"]
     delete "/api/v1/session", headers: auth(token)
     assert_response :no_content
     get "/api/v1/me", headers: auth(token)

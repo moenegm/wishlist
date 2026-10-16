@@ -9,6 +9,8 @@ services:
     envVars:
       - key: RAILS_ENV
         value: production
+      - key: MOBILE_API_ENABLED
+        value: "true"
       - key: RAILS_SERVE_STATIC_FILES
         value: "true"
       - key: RAILS_LOG_TO_STDOUT

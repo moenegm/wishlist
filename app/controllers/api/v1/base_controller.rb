@@ -1,6 +1,7 @@
 module Api
   module V1
     class BaseController < ActionController::API
+      before_action :prevent_caching
       before_action :require_api_enabled
       before_action :authenticate_mobile!
       rescue_from ActiveRecord::RecordNotFound do
@@ -14,6 +15,10 @@ module Api
       end
 
       private
+
+      def prevent_caching
+        response.set_header("Cache-Control", "no-store")
+      end
 
       def require_api_enabled
         head :not_found if Rails.env.production? && ENV["MOBILE_API_ENABLED"] != "true"
