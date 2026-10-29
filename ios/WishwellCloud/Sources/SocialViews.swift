@@ -498,6 +498,88 @@ struct LiveSocialCheckView: View {
     private func require(_ condition: Bool, _ message: String) throws {
         guard condition else { throw WishwellError(message) }
     }
+    @MainActor private func cascadeCheck(user: String) async throws -> Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--unpublish-fixture"), arguments.indices.contains(index + 1) {
+            let id = arguments[index + 1]
+            try require(id.hasPrefix("wishwell-check-"), "Only synthetic fixtures may be unpublished.")
+            guard let row = try await database.record(id), row.kind == .list, row.creator == user else {
+                throw WishwellError("The synthetic list must belong to the current account.")
+            }
+            try await database.delete(row)
+            do {
+                _ = try await database.save(row)
+                throw WishwellError("A stale save recreated the unpublished test list.")
+            } catch let error as CKError where error.code == .unknownItem || error.code == .serverRecordChanged { }
+            note("COMPLETE: synthetic list unpublished; stale recreation rejected by server.")
+            return true
+        }
+        if let index = arguments.firstIndex(of: "--verify-cascade"), arguments.indices.contains(index + 3) {
+            let ids = Array(arguments[(index + 1)...(index + 3)])
+            try require(ids.allSatisfy { $0.hasPrefix("wishwell-check-") }, "Only synthetic fixtures may be checked.")
+            for attempt in 0..<30 {
+                var remaining = 0
+                for id in ids { if try await database.record(id) != nil { remaining += 1 } }
+                if remaining == 0 {
+                    note("COMPLETE: unpublished root and the other account's like/comment are absent on Apple's service.")
+                    return true
+                }
+                if attempt == 0 { note("Waiting for asynchronous CloudKit cascade…") }
+                try await Task.sleep(for: .seconds(1))
+            }
+            throw WishwellError("Cascade did not finish within this check; do not assume dependent deletion is complete.")
+        }
+        return false
+    }
+
+    @MainActor private func crossAccountChecks(user: String, prefix: String) async throws {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--peer-profile"), arguments.indices.contains(index + 3) else {
+            note("COMPLETE: first-account checks passed. Cross-account permissions are still unverified.")
+            return
+        }
+        let profileID = arguments[index + 1], listID = arguments[index + 2], reportID = arguments[index + 3]
+        try require([profileID, listID, reportID].allSatisfy { $0.hasPrefix("wishwell-check-") }, "Only synthetic fixtures may be tested.")
+        guard let peer = try await database.record(profileID), peer.kind == .profile,
+              let list = try await database.record(listID), list.kind == .list else { throw WishwellError("Peer synthetic records are unavailable.") }
+        try require(peer.creator != user && list.creator == peer.creator, "Two distinct Apple accounts are required.")
+        note("PASS: distinct Apple accounts and public profile/list reads")
+        let matches = try await database.query(SocialQuery(kind: .profile, creator: peer.creator))
+        try require(matches.contains { $0.id == profileID }, "Creator query did not return the peer profile.")
+        note("PASS: public creator query")
+        let encoder = JSONEncoder()
+        for foreign in [peer, list] {
+            do {
+                _ = try await database.save(foreign)
+                throw WishwellError("Server permitted an update to another account's synthetic record.")
+            } catch let error as CKError where error.code == .permissionFailure { }
+            do {
+                try await database.delete(foreign)
+                throw WishwellError("Server permitted deletion of another account's synthetic record.")
+            } catch let error as CKError where error.code == .permissionFailure { }
+        }
+        note("PASS: server denies foreign profile/list updates and deletion")
+        do {
+            let report = try await database.record(reportID)
+            try require(report == nil, "Another account's report was readable.")
+        } catch let error as CKError where error.code == .permissionFailure { }
+        let reports = try await database.query(SocialQuery(kind: .report, creator: peer.creator))
+        try require(reports.isEmpty, "Report query exposed another account's reports.")
+        note("PASS: foreign report hidden from direct fetch and creator query")
+        _ = try await database.save(SocialRow(id: prefix + "-peer-follow", kind: .follow, parent: profileID, payload: encoder.encode(SocialAction())))
+        let like = try await database.save(SocialRow(id: prefix + "-peer-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+        let comment = try await database.save(SocialRow(id: prefix + "-peer-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cross-account comment"))))
+        try require(like.creator == user && comment.creator == user, "Interaction creator metadata did not match.")
+        try require(try await database.record(comment.id) != nil, "Own comment on peer list could not be read.")
+        try await database.delete(comment)
+        try await database.delete(like)
+        note("PASS: follow, like/comment on peer list, and delete own interactions")
+        _ = try await database.save(SocialRow(id: prefix + "-cascade-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+        _ = try await database.save(SocialRow(id: prefix + "-cascade-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cascade check"))))
+        note("Prepared synthetic interactions for cross-account cascade verification")
+        note("COMPLETE: first-account and cross-account checks passed. Reciprocal checks and cascade removal remain.")
+    }
+
     @MainActor private func run() async {
         guard !running, messages.isEmpty else { return }
         running = true; defer { running = false }
@@ -508,6 +590,7 @@ struct LiveSocialCheckView: View {
             let encoder = JSONEncoder()
             let user = try await database.userID()
             note("PASS: signed-in CloudKit identity")
+            if try await cascadeCheck(user: user) { return }
             let prefix = "wishwell-check-\(UUID().uuidString)"
             let profileID = prefix + "-profile", listID = prefix + "-list", reportID = prefix + "-report"
             let manifest = ["profileID": profileID, "listID": listID, "reportID": reportID]
@@ -540,7 +623,7 @@ struct LiveSocialCheckView: View {
             } catch let error as CKError where error.code == .unknownItem || error.code == .serverRecordChanged {
                 note("PASS: server rejects stale save after unpublish")
             }
-            note("COMPLETE: first-account checks passed. Cross-account permissions are still unverified.")
+            try await crossAccountChecks(user: user, prefix: prefix)
             #endif
         } catch { note("FAIL: \(error.localizedDescription)") }
     }

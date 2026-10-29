@@ -51,8 +51,30 @@ The two-account in-memory tests cover the domain's rules, not Apple's live permi
 
 ## Development import status
 
-On October 29, 2026, the reviewed combined schema passed Apple’s validation and was imported into development. The subsequent server export was compared with the reviewed schema: all nine record types, existing definitions, social indexes and grants, and the Moderator role are present. Differences were limited to standard system fields added by Apple. WWReport has no World or general iCloud read grant. This checks configuration only; actual two-account permission enforcement and Moderator access remain unverified. Production is unchanged.
+On October 29, 2026, the reviewed combined schema passed Apple’s validation and was imported into development. The subsequent server export was compared with the reviewed schema: all nine record types, existing definitions, social indexes and grants, and the Moderator role are present. Differences were limited to standard system fields added by Apple. WWReport has no World or general iCloud read grant. This checks configuration only; the initial import did not verify actual two-account enforcement or Moderator access; see the subsequent live checks below. Production is unchanged.
 
 For first-account testing, explicitly launch the signed debug app with `--social-live-check`. This diagnostic uses synthetic development public records without opening the private library. Keep normal social features disabled until the live checks above pass.
 
-Live first-account verification on October 29, 2026: a signed iPhone passed CloudKit identity, profile creation with creator metadata, own-profile read/update, synthetic list publication, like/comment creation, own-report create/read, and server rejection of a stale save after deleting a synthetic public root. The initial run found that WWReport needed explicit Creator read permission; this was corrected in development and in social.ckdb, with a schema regression assertion. All 20 unit tests pass, and Debug/device and Release/simulator builds succeed. Cross-account report denial, foreign-record write/delete denial, dependent deletion, and Moderator access remain unverified. Synthetic fixtures remain for second-account checks and must be removed before ordinary social use. Normal social features stay disabled.
+Live first-account verification on October 29, 2026: a signed iPhone passed CloudKit identity, profile creation with creator metadata, own-profile read/update, synthetic list publication, like/comment creation, own-report create/read, and server rejection of a stale save after deleting a synthetic public root. The initial run found that WWReport needed explicit Creator read permission; this was corrected in development and in social.ckdb, with a schema regression assertion. All 20 unit tests pass, and Debug/device and Release/simulator builds succeed. That first-account run did not yet verify cross-account report denial, foreign-record write/delete denial, dependent deletion, or Moderator access; see the subsequent two-account results below. Synthetic fixtures remain for second-account checks and must be removed before ordinary social use. Normal social features stay disabled.
+
+## Two-account live checks
+
+On October 29, 2026, signed iPhones using two distinct Apple accounts passed direct checks against the actual development CloudKit service in both directions:
+
+- Read the other account’s public synthetic profile/list and query the profile by CloudKit creator.
+- Server rejection of updates and deletion of the other account’s profile/list.
+- The other account’s report remained hidden through direct record fetch and creator-filtered query.
+- Create follows, likes, and comments on the other account’s content, then delete own interactions.
+- Both accounts also passed their own-record checks and stale-save rejection after deleting a synthetic root.
+
+For dependent deletion, one account created a like and comment on the other account’s synthetic list. Its owner unpublished that list and the server rejected a stale recreation. The interacting account then verified that the root, like, and comment were all absent. This is a live server observation, not a simulator or mock result. CloudKit cascading remains asynchronous. Debug/device and Release/simulator builds pass.
+
+These checks exercise the direct CloudKit adapter, not the full social screens. Moderator assignment/access, live search UI, block/report flows, notifications/read markers, and public-profile removal still need joint testing. The normal social feature flag remains false. Synthetic fixtures remain for follow-up and must be removed before ordinary social use. Production is unchanged.
+
+Diagnostic launch arguments (Debug, signed physical devices only):
+
+- `--social-live-check --peer-profile PROFILE_ID LIST_ID REPORT_ID` runs own-record and cross-account checks and leaves synthetic cascade interactions.
+- `--social-live-check --unpublish-fixture LIST_ID` deletes only an owned synthetic list and checks stale-save rejection.
+- `--social-live-check --verify-cascade LIST_ID LIKE_ID COMMENT_ID` polls for the three synthetic records to become absent.
+
+All supplied fixture IDs must begin with `wishwell-check-`. Results and fixture IDs are local diagnostic files, excluded from library backup. No private library is opened.
