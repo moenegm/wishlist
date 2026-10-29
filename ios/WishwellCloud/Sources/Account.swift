@@ -14,10 +14,12 @@ struct BackupDocument: FileDocument {
 }
 
 struct SettingsView: View {
+    @Environment(SocialStore.self) private var social
     @Environment(CloudStore.self) private var cloud
     @Environment(\.modelContext) private var context
     @Query(sort: \LocalProfile.createdAt) private var profiles: [LocalProfile]
     @Query(sort: \WishList.createdAt) private var lists: [WishList]
+    @Query private var hidden: [HiddenPerson]
     @State private var name = ""
     @State private var photo: PhotosPickerItem?
     @State private var export = false
@@ -25,6 +27,8 @@ struct SettingsView: View {
     @State private var migration = false
     @State private var document = BackupDocument()
     @State private var message: String?
+    @State private var publicProfile = false
+    @State private var removingProfile = false
     var body: some View {
         Form {
             Section("Your profile") {
@@ -36,7 +40,7 @@ struct SettingsView: View {
                 }
                 Button("Save profile") { saveProfile() }
                 PhotosPicker("Choose profile photo", selection: $photo, matching: .images)
-                Text("Your profile stays private during this conversion preview.").font(.caption).foregroundStyle(.secondary)
+                Text("These details stay private until you choose to publish a public profile below.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Your library") {
                 Label(cloud.localOnly ? "On this device" : "Private iCloud library", systemImage: cloud.localOnly ? "iphone" : "icloud")
@@ -58,8 +62,27 @@ struct SettingsView: View {
             Section {
                 NavigationLink { SupportView() } label: { Label("Support Wishwell", systemImage: "heart") }
             } footer: { Text("Wishwell is free. No subscriptions. No locked features.") }
+            Section("Your circle") {
+                if social.enabled {
+                    Button(social.me == nil ? "Set up public profile" : "Edit public profile") { publicProfile = true }
+                    if social.me != nil {
+                        Button("Remove public profile", role: .destructive) { removingProfile = true }.disabled(social.busy)
+                    }
+                } else { Text("Social sharing is awaiting CloudKit permission setup.").font(.footnote).foregroundStyle(.secondary) }
+            }
+            if !hidden.isEmpty {
+                Section("Blocked people") {
+                    ForEach(hidden) { person in
+                        Button("Unblock member") {
+                            let owner = person.ownerID
+                            for row in hidden where row.ownerID == owner { context.delete(row) }
+                            do { try context.save(); social.hidden.remove(owner) } catch { context.rollback(); message = error.localizedDescription }
+                        }
+                    }
+                }
+            }
             Section("About this preview") {
-                Text("Personal wishes are stored on your device and, when connected, in your private iCloud database. Social discovery, following, likes, comments, and activity are still being converted.").font(.footnote)
+                Text("Personal wishes are stored on your device and, when connected, in your private iCloud database. Only profiles and wishlists you explicitly publish enter the public social database.").font(.footnote)
             }
         }.navigationTitle("Settings")
             .onAppear { name = profiles.first?.displayName ?? "" }
@@ -92,6 +115,14 @@ struct SettingsView: View {
                 } catch { message = error.localizedDescription }
             }
             .sheet(isPresented: $migration) { LegacyImportView() }
+            .sheet(isPresented: $publicProfile) { PublicProfileEditor() }
+            .confirmationDialog("Remove your public profile?", isPresented: $removingProfile, titleVisibility: .visible) {
+                Button("Remove public profile", role: .destructive) { Task { await social.perform {
+                    try await social.removeProfile()
+                    for list in lists { list.publicRecordName = nil }
+                    do { try context.save() } catch { context.rollback(); throw error }
+                } } }
+            } message: { Text("This removes your public profile, published lists, and the interactions you authored. Your personal wishlists stay private and intact.") }
             .alert("Wishwell", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("OK") { message = nil } } message: { Text(message ?? "") }
     }
     private func profileForEditing() -> LocalProfile {

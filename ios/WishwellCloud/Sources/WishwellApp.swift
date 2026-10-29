@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import CryptoKit
 
 @main struct WishwellCloudApp: App {
     @State private var cloud = CloudStore()
@@ -24,7 +25,7 @@ import SwiftData
             .environment(cloud).tint(Theme.green)
             .task {
                 #if DEBUG
-                let local = ProcessInfo.processInfo.arguments.contains("--local-preview")
+                let local = ProcessInfo.processInfo.arguments.contains("--local-preview") || ProcessInfo.processInfo.arguments.contains("--social-preview")
                 #else
                 let local = false
                 #endif
@@ -35,36 +36,91 @@ import SwiftData
 }
 
 enum LibraryArea: String, CaseIterable, Identifiable {
-    case lists = "My Lists", circle = "Circle", settings = "Settings"
+    case lists = "My Lists", circle = "Circle", activity = "Notifications", settings = "Settings"
     var id: String { rawValue }
-    var icon: String { switch self { case .lists: "heart.text.clipboard"; case .circle: "person.2"; case .settings: "gearshape" } }
+    var icon: String { switch self { case .lists: "heart.text.clipboard"; case .circle: "person.2"; case .activity: "bell"; case .settings: "gearshape" } }
 }
 
 struct LibraryRoot: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.modelContext) private var context
+    @Environment(CloudStore.self) private var cloud
+    @Environment(\.scenePhase) private var phase
+    @Query private var hidden: [HiddenPerson]
+    @Query private var readState: [SocialReadState]
+    @Query(sort: \WishList.createdAt) private var lists: [WishList]
+    @State private var social = SocialStore.makeForApp()
     @State private var area: LibraryArea? = .lists
     var body: some View {
         Group {
             if sizeClass == .regular {
                 NavigationSplitView {
-                    List(LibraryArea.allCases, selection: $area) { item in Label(item.rawValue, systemImage: item.icon).tag(item) }
+                    List(LibraryArea.allCases, selection: $area) { item in
+                        NavigationLink(value: item) { Label(item.rawValue, systemImage: item.icon) }
+                            .badge(item == .activity ? unreadCount : 0)
+                            .accessibilityIdentifier("nav.\(item.rawValue)")
+                    }
                         .navigationTitle("Wishwell")
                 } detail: { section(area ?? .lists).id(area) }
             } else {
                 TabView {
-                    ForEach(LibraryArea.allCases) { item in section(item).tabItem { Label(item.rawValue, systemImage: item.icon) } }
+                    ForEach(LibraryArea.allCases) { item in section(item).tabItem { Label(item.rawValue, systemImage: item.icon) }.badge(item == .activity ? unreadCount : 0) }
                 }
             }
         }
+        .environment(social)
+        .task {
+            social.hidden = Set(hidden.map(\.ownerID))
+            if cloud.localOnly && !social.isDemo { social.enabled = false }
+            if social.enabled {
+                do { try await social.connect(); social.activityRows = try await social.activity() }
+                catch { social.error = error.localizedDescription }
+            }
+        }
+        .onChange(of: hidden.map(\.ownerID)) { _, values in social.hidden = Set(values) }
+        .task(id: publicationFingerprint) { await updatePublicCopies() }
+        .onChange(of: phase) { _, value in if value == .active { Task {
+            await updatePublicCopies()
+            if social.enabled { do { social.activityRows = try await social.activity() } catch { social.publicationMessage = error.localizedDescription } }
+        } } }
+        .alert("Wishwell", isPresented: Binding(get: { social.error != nil }, set: { if !$0 { social.error = nil } })) { Button("OK") { social.error = nil } } message: { Text(social.error ?? "") }
+    }
+    private var unreadCount: Int {
+        let read = Set(readState.map(\.id))
+        return social.activityRows.filter { !read.contains($0.id) }.count
     }
     private func section(_ item: LibraryArea) -> some View {
         NavigationStack {
             switch item {
             case .lists: LibraryView()
-            case .circle: CircleSetupView()
+            case .circle: CircleView()
+            case .activity: ActivityView()
             case .settings: SettingsView()
             }
         }
+    }
+    private var publicationFingerprint: String {
+        guard let me = social.me else { return "" }
+        let snapshots = lists.filter { $0.publicRecordName != nil }.map { PublicList(list: $0, profile: me, id: $0.publicRecordName!) }
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let data = (try? encoder.encode(snapshots)) ?? Data()
+        return SHA256.hash(data: data).description
+    }
+    private func updatePublicCopies() async {
+        guard social.enabled, let me = social.me else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(700)); try Task.checkCancellation()
+            for list in lists {
+                guard let id = list.publicRecordName else { continue }
+                guard try await social.publicList(id) != nil else {
+                    list.publicRecordName = nil; try context.save(); continue
+                }
+                let snapshot = PublicList(list: list, profile: me, id: id)
+                _ = try await social.publish(snapshot, existingID: id)
+            }
+            social.publicationMessage = nil
+        } catch is CancellationError { }
+        catch { social.publicationMessage = "Your personal changes are saved. Updating the public copy needs attention: \(error.localizedDescription)" }
     }
 }
 

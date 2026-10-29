@@ -23,6 +23,7 @@ final class StorageTests: XCTestCase {
     @MainActor func testArchiveRoundTripAndDuplicateImport() throws {
         let source = try makeContainer(); let context = source.mainContext
         let list = WishList(title: "Home", category: "Furniture"); context.insert(list)
+        list.publicRecordName = "old-public-copy"
         let wish = try Wish(title: "Chair", options: [ShoppingOption(location: "Store", price: "99.50")], list: list)
         wish.fulfilled = true; context.insert(wish); try context.save()
         let encoded = try JSONEncoder().encode(WishwellArchive(lists: [list]))
@@ -33,6 +34,7 @@ final class StorageTests: XCTestCase {
         let restored = try XCTUnwrap(destination.fetch(FetchDescriptor<Wish>()).first)
         XCTAssertTrue(restored.fulfilled); XCTAssertEqual(restored.options.first?.price, "99.50")
         XCTAssertEqual(restored.list?.category, "Furniture")
+        XCTAssertNil(restored.list?.publicRecordName, "Importing a backup must never publish or retain another account's public record ID")
         XCTAssertEqual(try destination.fetchCount(FetchDescriptor<WishList>()), 1)
         XCTAssertEqual(try destination.fetchCount(FetchDescriptor<Wish>()), 1)
     }

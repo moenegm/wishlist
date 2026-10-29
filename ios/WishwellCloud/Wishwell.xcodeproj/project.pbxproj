@@ -17,6 +17,10 @@
 		B88687CD506C60745B88F059 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7185755B3D4C8411E5B37B /* Models.swift */; };
 		C694D9A1423B9C2348E685E9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B20FF8A4C3E9C476707D2AF /* Foundation.framework */; };
 		ECBA562686294B00A2241D28 /* WishwellApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EDAD2F50EF7BC769BB8AC86 /* WishwellApp.swift */; };
+		23BA4281F5A2EB032685F715 /* SocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA8B5693B554A765ADFE026 /* SocialModels.swift */; };
+		F49A30D78CEDC59981B4EA6D /* SocialService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F190B2D479D156D7F5D9E419 /* SocialService.swift */; };
+		5F3E81B03FFBF406CD9778D6 /* CloudSocialDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CA8E580D7E7CAF90F60B28 /* CloudSocialDatabase.swift */; };
+		BF93A230F7A94E4C2DF8154F /* SocialViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 203E18709D30CB7D982FD58B /* SocialViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +45,10 @@
 		5F55D2CA07D2FEA2977815A0 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7B20FF8A4C3E9C476707D2AF /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		81D3DA203D5A0601E787DD44 /* Wishlists.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Wishlists.swift; sourceTree = "<group>"; };
+		8AA8B5693B554A765ADFE026 /* SocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialModels.swift; sourceTree = "<group>"; };
+		F190B2D479D156D7F5D9E419 /* SocialService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialService.swift; sourceTree = "<group>"; };
+		76CA8E580D7E7CAF90F60B28 /* CloudSocialDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSocialDatabase.swift; sourceTree = "<group>"; };
+		203E18709D30CB7D982FD58B /* SocialViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,6 +92,10 @@
 			isa = PBXGroup;
 			children = (
 				201BAAAB2159C9DF8111D37F /* API.swift */,
+				203E18709D30CB7D982FD58B /* SocialViews.swift */,
+				76CA8E580D7E7CAF90F60B28 /* CloudSocialDatabase.swift */,
+				F190B2D479D156D7F5D9E419 /* SocialService.swift */,
+				8AA8B5693B554A765ADFE026 /* SocialModels.swift */,
 				17F5F645E7A9782AFD602891 /* Account.swift */,
 				16DA1EC32571E9519190E1CB /* Community.swift */,
 				1B7185755B3D4C8411E5B37B /* Models.swift */,
@@ -214,6 +226,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				149BF33ABA8E9485A1AC44C9 /* API.swift in Sources */,
+				BF93A230F7A94E4C2DF8154F /* SocialViews.swift in Sources */,
+				5F3E81B03FFBF406CD9778D6 /* CloudSocialDatabase.swift in Sources */,
+				F49A30D78CEDC59981B4EA6D /* SocialService.swift in Sources */,
+				23BA4281F5A2EB032685F715 /* SocialModels.swift in Sources */,
 				0EC1009DADAA7755F8F50EC0 /* Account.swift in Sources */,
 				25F1D719233DCA96C73E1A31 /* Community.swift in Sources */,
 				B88687CD506C60745B88F059 /* Models.swift in Sources */,

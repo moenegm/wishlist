@@ -8,6 +8,7 @@ import SwiftData
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var legacyID: Int?
+    var publicRecordName: String?
     @Relationship(deleteRule: .cascade, inverse: \Wish.list) var wishes: [Wish]?
     init(title: String, category: String = "") { self.title = title; self.category = category; wishes = [] }
     var sortedWishes: [Wish] {

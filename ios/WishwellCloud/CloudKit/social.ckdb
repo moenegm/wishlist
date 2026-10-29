@@ -1,0 +1,81 @@
+DEFINE SCHEMA
+
+    CREATE ROLE Moderator;
+
+    RECORD TYPE WWProfile (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WWList (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WWFollow (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WWLike (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WWComment (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE WWReport (
+        "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+        "___createdBy" REFERENCE QUERYABLE,
+        "___recordID" REFERENCE QUERYABLE,
+        payload BYTES,
+        parent REFERENCE QUERYABLE,
+        sourceID STRING QUERYABLE,
+        searchTokens LIST<STRING> QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ, WRITE TO Moderator
+    );

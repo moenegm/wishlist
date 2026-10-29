@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct LibraryView: View {
+    @Environment(SocialStore.self) private var social
     @Query(sort: \WishList.createdAt, order: .reverse) private var lists: [WishList]
     @Environment(CloudStore.self) private var cloud
     @State private var adding = false
@@ -13,6 +14,7 @@ struct LibraryView: View {
                 Text("Keep a little\nwonder close.").font(.system(size: 38, design: .serif))
                 Text("Big dreams, small joys, and everything in between.").foregroundStyle(.secondary)
                 if cloud.localOnly { Label("On-device library", systemImage: "iphone").font(.caption).foregroundStyle(.secondary) }
+                if let message = social.publicationMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 if lists.isEmpty {
                     ContentUnavailableView("Your first wish starts here", systemImage: "sparkles", description: Text("Create a wishlist to collect the things you’re hoping for."))
                     Button("Create a wishlist") { adding = true }.buttonStyle(.borderedProminent)
@@ -21,7 +23,7 @@ struct LibraryView: View {
                         ForEach(lists.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { list in
                             NavigationLink { ListDetail(list: list) } label: {
                                 VStack(alignment: .leading, spacing: 18) {
-                                    HStack { Image(systemName: "lock"); Spacer(); Text(list.category.uppercased()).font(.caption2) }.foregroundStyle(Theme.green)
+                                    HStack { Image(systemName: list.publicRecordName == nil ? "lock" : "globe"); Spacer(); Text(list.category.uppercased()).font(.caption2) }.foregroundStyle(Theme.green)
                                     Text(list.title).font(.system(.title2, design: .serif)).foregroundStyle(.primary)
                                     HStack { Text("\(list.wishes?.count ?? 0) wishes"); Spacer(); Image(systemName: "arrow.up.right") }.font(.subheadline).foregroundStyle(.secondary)
                                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(Theme.sage.opacity(0.6), in: RoundedRectangle(cornerRadius: 24))
@@ -48,7 +50,7 @@ struct ListEditor: View {
             Form {
                 TextField("Wishlist name", text: $title).accessibilityIdentifier("list.title")
                 TextField("Category (optional)", text: $category)
-                Section { Label("Private to you", systemImage: "lock") } footer: { Text("This conversion preview keeps all lists private. Social publishing will be enabled after CloudKit permissions are verified.") }
+                Section { Label(existing?.publicRecordName == nil ? "Private to you" : "Published to your circle", systemImage: existing?.publicRecordName == nil ? "lock" : "globe") } footer: { Text("New lists are always private. Manage publishing from the wishlist’s sharing menu.") }
                 if let error { Text(error).foregroundStyle(.red) }
             }.navigationTitle(existing == nil ? "New wishlist" : "Edit wishlist")
                 .toolbar {
@@ -69,6 +71,7 @@ struct ListDetail: View {
     let list: WishList
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(SocialStore.self) private var social
     @State private var adding = false
     @State private var editing = false
     @State private var deleting = false
@@ -77,7 +80,7 @@ struct ListDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Label("Private wishlist", systemImage: "lock").font(.caption).foregroundStyle(Theme.green)
+                Label(list.publicRecordName == nil ? "Private wishlist" : "Published wishlist", systemImage: list.publicRecordName == nil ? "lock" : "globe").font(.caption).foregroundStyle(Theme.green)
                 Text(list.title).font(.system(.largeTitle, design: .serif))
                 Toggle("Show fulfilled wishes", isOn: $showFulfilled)
                 if list.sortedWishes.isEmpty { ContentUnavailableView("Ready for a first wish", systemImage: "sparkles") }
@@ -91,18 +94,24 @@ struct ListDetail: View {
             .toolbar {
                 Button("Add a wish", systemImage: "plus") { adding = true }.accessibilityIdentifier("wish.add")
                 Menu {
+                    NavigationLink { ListSharingView(list: list) } label: { Label("Wishlist sharing", systemImage: "person.2") }
                     Button("Edit wishlist", systemImage: "pencil") { editing = true }
                     ShareLink(item: shareText) { Label("Share a text copy", systemImage: "square.and.arrow.up") }
                     Button("Delete wishlist", systemImage: "trash", role: .destructive) { deleting = true }.disabled(!(list.wishes ?? []).isEmpty)
-                } label: { Image(systemName: "ellipsis.circle") }
+                } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("list.menu")
             }
             .sheet(isPresented: $adding) { WishEditor(list: list) }
             .sheet(isPresented: $editing) { ListEditor(existing: list) }
             .confirmationDialog("Delete this empty wishlist?", isPresented: $deleting, titleVisibility: .visible) {
                 Button("Delete wishlist", role: .destructive) {
                     guard (list.wishes ?? []).isEmpty else { error = "Move or delete the wishes in this list first."; return }
-                    context.delete(list)
-                    do { try context.save(); dismiss() } catch { context.rollback(); self.error = error.localizedDescription }
+                    Task {
+                        do {
+                            if let id = list.publicRecordName { try await social.unpublish(id) }
+                            guard (list.wishes ?? []).isEmpty else { throw WishwellError("Move or delete the wishes in this list first.") }
+                            context.delete(list); try context.save(); dismiss()
+                        } catch { context.rollback(); self.error = error.localizedDescription }
+                    }
                 }
             }
             .alert("Couldn’t save", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }

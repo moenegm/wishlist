@@ -81,7 +81,7 @@ import CryptoKit
             guard generation == attempt else { return }
             let root = URL.applicationSupportDirectory.appending(path: "WishwellLibraries", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let schema = Schema([WishList.self, Wish.self, LocalProfile.self])
+            let schema = Schema([WishList.self, Wish.self, LocalProfile.self, SocialReadState.self, HiddenPerson.self])
             let configuration = ModelConfiguration("Wishwell", schema: schema,
                 url: root.appending(path: "\(identity).store"),
                 cloudKitDatabase: local ? .none : .private(Self.containerID))

@@ -5,6 +5,48 @@ final class WishwellUITests: XCTestCase {
         try createWish(local: true)
     }
 
+    @MainActor func testSocialPreviewLikeAndComment() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication(); app.launchArguments = ["--social-preview"]; app.launch()
+        let circle = app.buttons["Circle"]
+        if circle.waitForExistence(timeout: 10) { circle.tap() }
+        else { app.staticTexts["Circle"].firstMatch.tap() }
+        let shared = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "A cozy corner")).firstMatch
+        guard shared.waitForExistence(timeout: 10) else {
+            let failure = XCTAttachment(screenshot: app.screenshot()); failure.lifetime = .keepAlways; add(failure)
+            XCTFail("Shared feed missing: \(app.debugDescription)"); return
+        }; shared.tap()
+        let like = app.buttons["social.like"]
+        if !like.isHittable { app.swipeUp() }
+        XCTAssertTrue(like.waitForExistence(timeout: 5)); like.tap()
+        XCTAssertEqual(like.label, "1 like")
+        let field = app.textFields["social.comment.text"]
+        let editor = field.exists ? field : app.textViews["social.comment.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("A lovely place to read")
+        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+        app.buttons["social.comment.post"].tap()
+        XCTAssertTrue(app.staticTexts["A lovely place to read"].waitForExistence(timeout: 5))
+        let proof = XCTAttachment(screenshot: app.screenshot()); proof.name = "Social preview like and comment"; proof.lifetime = .keepAlways; add(proof)
+    }
+
+    @MainActor func testPrivateListPublishAndUnpublishInSocialPreview() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["--social-preview"]; app.launch()
+        let add = app.buttons["list.add"]; XCTAssertTrue(add.waitForExistence(timeout: 15)); add.tap()
+        let title = app.textFields["list.title"]; XCTAssertTrue(title.waitForExistence(timeout: 5)); title.tap()
+        let name = "Sharing check \(UUID().uuidString.prefix(5))"; title.typeText(name); app.buttons["list.save"].tap()
+        let list = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 5)); list.tap()
+        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
+        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 5)); publish.tap()
+        app.buttons["social.list.confirmPublish"].firstMatch.tap()
+        let makePrivate = app.buttons["social.list.private"]; XCTAssertTrue(makePrivate.waitForExistence(timeout: 5)); makePrivate.tap()
+        app.buttons["social.list.confirmPrivate"].firstMatch.tap()
+        XCTAssertTrue(publish.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Private wishlist"].exists)
+    }
+
     @MainActor func testCreateCloudSyncFixture() throws {
         #if targetEnvironment(simulator)
         throw XCTSkip("Cloud sync requires signed devices with iCloud accounts.")

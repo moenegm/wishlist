@@ -1,16 +1,6 @@
 import SwiftUI
 import SwiftData
 
-struct CircleSetupView: View {
-    var body: some View {
-        ContentUnavailableView {
-            Label("Your circle is coming along", systemImage: "person.2")
-        } description: {
-            Text("Following, likes, comments, and notifications are being rebuilt for iCloud. Your personal lists stay private in this preview. You can already share a text copy from a wishlist’s menu.")
-        }.navigationTitle("Your circle")
-    }
-}
-
 private struct LegacyLogin: Decodable { let token: String }
 private struct LegacyOption: Decodable {
     var location: String?
