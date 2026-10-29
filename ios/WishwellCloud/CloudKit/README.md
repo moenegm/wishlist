@@ -105,4 +105,22 @@ Four UI tests drive it across two devices with distinct Apple accounts. They ski
 3. Owner device: `testLiveSocial3OwnerSeesActivityThenRemovesEverything`. Checks follow/like/comment activity, marks it read, makes the list private and removes the public profile.
 4. Peer device: `testLiveSocial4PeerSeesRemovalThenRemovesProfile`. Confirms the owner no longer appears, then removes its own profile.
 
-Afterwards only the peer's report remains, which is intentional for moderation review. Read-marker sync across a second device on the same account, alert pushes and iPad layout are not covered by these tests. As of October 30, 2026 these live UI tests have been written and compiled but not yet run on devices.
+Afterwards only the peer's report remains, which is intentional for moderation review. Read-marker sync across a second device on the same account, alert pushes and iPad layout are not covered by these tests.
+
+### Results, October 30, 2026
+
+All four tests passed on two signed iPhones with distinct Apple accounts against the actual development CloudKit service: the owner on the user's iPhone and the peer on the second iPhone. Covered through the real screens: profile publishing, list publishing, full-name search, follow, like, comment, reporting a list, blocking (search hides the person) and unblocking, follow/like/comment notifications on the owner's device, marking them read, making the list private, and removing both public profiles.
+
+Running them found and fixed three problems:
+
+- The report form's Submit button could sit under the keyboard; Submit is now in the navigation bar.
+- Like could be tapped before the thread loaded and act on placeholder state, removing an existing like. Like is now disabled until loaded and exposes Liked / Not liked to accessibility.
+- Test-side: tab switching while search was active, and reruns that toggled existing follows/likes.
+
+Leftovers: the peer account authored four "Live UI check" reports (one per run of test 2; one run didn't submit because of the keyboard issue). Reports have no parent, so profile removal doesn't delete them. The peer device's isolated test library still holds nothing of note, and the owner's isolated library holds the now-private "Live check list"; neither is the personal library.
+
+Still unverified: Moderator access, read markers syncing to a second device on the same account, iPad social layout on a device, and behavior with real (non-synthetic) content volume.
+
+### Fixture dry run, October 30, 2026
+
+`--cleanup-fixtures` without `--confirm-delete` listed 16 synthetic records on the user's account and 3 on the peer account (follow, report, profile), all with the `wishwell-check-` prefix. Nothing has been deleted yet; deletion is deferred until the Moderator check, which needs one of these synthetic reports.

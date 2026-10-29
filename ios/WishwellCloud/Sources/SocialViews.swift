@@ -259,6 +259,7 @@ struct SocialThreadView: View {
     var wishID: UUID?
     @Environment(SocialStore.self) private var social
     @State private var thread = SocialThread()
+    @State private var loaded = false
     @State private var bodyText = ""
     @State private var message: String?
     @State private var deleteID: String?
@@ -270,7 +271,10 @@ struct SocialThreadView: View {
             Button {
                 Task { await social.perform { try await social.setLike(listID: listID, wishID: wishID, liked: !thread.liked); await load() } }
             } label: { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
-                .disabled(social.busy || social.me == nil).accessibilityIdentifier("social.like")
+                // Toggling before the thread loads would act on a placeholder state.
+                .disabled(social.busy || social.me == nil || !loaded)
+                .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
+                .accessibilityIdentifier("social.like")
             Text("Comments").font(.system(.title2, design: .serif))
             ForEach(thread.comments) { comment in
                 VStack(alignment: .leading, spacing: 8) {
@@ -304,8 +308,8 @@ struct SocialThreadView: View {
             .sheet(isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })) { if let id = reportID { ReportView(id: id) } }
     }
     private func load() async {
-        do { thread = try await social.thread(listID: listID, wishID: wishID); message = nil }
-        catch { thread = SocialThread(); message = error.localizedDescription }
+        do { thread = try await social.thread(listID: listID, wishID: wishID); message = nil; loaded = true }
+        catch { thread = SocialThread(); message = error.localizedDescription; loaded = false }
     }
 }
 
@@ -371,9 +375,16 @@ struct ReportView: View {
                 else {
                     Text("Tell us what’s wrong. Reports are visible to you and Wishwell’s moderation team, not other members.").font(.footnote)
                     TextField("Reason for reporting", text: $reason, axis: .vertical).lineLimit(4...8).accessibilityIdentifier("social.report.reason")
-                    Button("Submit report") { Task { await social.perform { try await social.report(id, reason: reason); sent = true } } }.disabled(social.busy || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 1000).accessibilityIdentifier("social.report.submit")
                 }
-            }.navigationTitle("Report content").toolbar { Button("Done") { dismiss() }.disabled(social.busy).accessibilityIdentifier("social.report.done") }
+            }.navigationTitle("Report content").toolbar {
+                // Submit lives in the bar so the keyboard can't cover it.
+                ToolbarItem(placement: .cancellationAction) { Button(sent ? "Done" : "Cancel") { dismiss() }.disabled(social.busy).accessibilityIdentifier("social.report.done") }
+                if !sent {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Submit") { Task { await social.perform { try await social.report(id, reason: reason); sent = true } } }.disabled(social.busy || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 1000).accessibilityIdentifier("social.report.submit")
+                    }
+                }
+            }
         }
     }
 }

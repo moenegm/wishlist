@@ -19,8 +19,9 @@ final class WishwellUITests: XCTestCase {
         }; shared.tap()
         let like = app.buttons["social.like"]
         if !like.isHittable { app.swipeUp() }
-        XCTAssertTrue(like.waitForExistence(timeout: 5)); like.tap()
-        XCTAssertEqual(like.label, "1 like")
+        XCTAssertTrue(like.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForValue(like, equalTo: "Not liked", timeout: 10)); like.tap()
+        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 5)); XCTAssertEqual(like.label, "1 like")
         let field = app.textFields["social.comment.text"]
         let editor = field.exists ? field : app.textViews["social.comment.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("A lovely place to read")
@@ -103,21 +104,28 @@ final class WishwellUITests: XCTestCase {
     @MainActor func testLiveSocial2PeerInteractsReportsAndBlocks() throws {
         let app = try launchLiveSocial()
         try ensurePublicProfile(app, name: peerName)
+        unblockEveryone(app)
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
         tapLabel(app, ownerName, timeout: 30)
-        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15)); follow.tap()
+        // Safe to rerun: only switch Follow and Like on when they're off.
+        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
+        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
         XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
         tapLabel(app, liveList, timeout: 20)
         let like = app.buttons["social.like"]; XCTAssertTrue(like.waitForExistence(timeout: 20))
         if !like.isHittable { app.swipeUp() }
-        like.tap(); XCTAssertTrue(waitForLabel(like, "1 like", timeout: 20))
-        let field = app.textFields["social.comment.text"]
-        let editor = field.exists ? field : app.textViews["social.comment.text"]
-        editor.tap(); editor.typeText("Live check comment")
-        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-        app.buttons["social.comment.post"].tap()
-        XCTAssertTrue(app.staticTexts["Live check comment"].waitForExistence(timeout: 20))
+        XCTAssertTrue(waitForValue(like, notEqualTo: "Loading", timeout: 30), "Thread did not load")
+        if (like.value as? String) == "Not liked" { like.tap() }
+        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 20)); XCTAssertEqual(like.label, "1 like")
+        if !app.staticTexts["Live check comment"].exists {
+            let field = app.textFields["social.comment.text"]
+            let editor = field.exists ? field : app.textViews["social.comment.text"]
+            editor.tap(); editor.typeText("Live check comment")
+            if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+            app.buttons["social.comment.post"].tap()
+        }
+        XCTAssertTrue(app.staticTexts["Live check comment"].firstMatch.waitForExistence(timeout: 20))
         app.buttons["social.list.report"].tap()
         let reason = app.textFields["social.report.reason"].exists ? app.textFields["social.report.reason"] : app.textViews["social.report.reason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 5)); reason.tap(); reason.typeText("Live UI check. No moderation action needed.")
@@ -130,7 +138,8 @@ final class WishwellUITests: XCTestCase {
         search(app, "Wishwell Owner")
         XCTAssertTrue(app.staticTexts["No people to show yet."].waitForExistence(timeout: 20), "Blocked person still appears in search")
         openArea(app, "Settings")
-        let unblock = app.buttons["social.unblock"]; scrollTo(app, unblock); unblock.tap()
+        let unblock = app.buttons["social.unblock"]; scrollTo(app, unblock)
+        XCTAssertTrue(unblock.waitForExistence(timeout: 10), "Blocked person missing from Settings"); unblock.tap()
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
         XCTAssertTrue(labelled(app, ownerName).waitForExistence(timeout: 30), "Unblocked person did not return to search")
@@ -175,6 +184,8 @@ final class WishwellUITests: XCTestCase {
         #endif
     }
     @MainActor private func openArea(_ app: XCUIApplication, _ name: String) {
+        // An active search keeps the keyboard up and swallows the tab tap.
+        for label in ["Close", "Cancel"] where app.keyboards.count > 0 && app.buttons[label].exists { app.buttons[label].firstMatch.tap() }
         let tab = app.tabBars.buttons[name]
         if tab.waitForExistence(timeout: 5) { tab.tap() } else { app.buttons[name].firstMatch.tap() }
     }
@@ -187,6 +198,10 @@ final class WishwellUITests: XCTestCase {
     @MainActor private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", label), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+    @MainActor private func waitForValue(_ element: XCUIElement, equalTo value: String? = nil, notEqualTo other: String? = nil, timeout: TimeInterval) -> Bool {
+        let predicate = value.map { NSPredicate(format: "value == %@", $0) } ?? NSPredicate(format: "value != %@", other ?? "")
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: timeout) == .completed
     }
     @MainActor private func search(_ app: XCUIApplication, _ text: String) {
         let field = app.searchFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap()
@@ -211,6 +226,12 @@ final class WishwellUITests: XCTestCase {
         field.typeText(name)
         app.buttons["social.profile.publish"].tap()
         XCTAssertTrue(edit.waitForExistence(timeout: 30), "Publishing the profile did not finish")
+    }
+    @MainActor private func unblockEveryone(_ app: XCUIApplication) {
+        openArea(app, "Settings")
+        let unblock = app.buttons["social.unblock"]
+        scrollTo(app, unblock)
+        while unblock.exists { unblock.tap(); _ = unblock.waitForNonExistence(timeout: 2) }
     }
     @MainActor private func removePublicProfile(_ app: XCUIApplication) throws {
         openArea(app, "Settings")
