@@ -117,7 +117,7 @@ Running them found and fixed three problems:
 - Like could be tapped before the thread loaded and act on placeholder state, removing an existing like. Like is now disabled until loaded and exposes Liked / Not liked to accessibility.
 - Test-side: tab switching while search was active, and reruns that toggled existing follows/likes.
 
-Leftovers: the peer account authored four "Live UI check" reports (one per run of test 2; one run didn't submit because of the keyboard issue). Reports have no parent, so profile removal doesn't delete them. The peer device's isolated test library still holds nothing of note, and the owner's isolated library holds the now-private "Live check list"; neither is the personal library.
+Leftovers: the peer account authored three "Live UI check" reports (test 2 ran four times; one run didn't submit because of the keyboard issue). Reports have no parent, so profile removal doesn't delete them. The peer device's isolated test library still holds nothing of note, and the owner's isolated library holds the now-private "Live check list"; neither is the personal library.
 
 Still unverified: Moderator access, read markers syncing to a second device on the same account, iPad social layout on a device, and behavior with real (non-synthetic) content volume.
 
