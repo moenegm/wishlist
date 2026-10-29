@@ -35,3 +35,6 @@
 **/*.xcuserstate
 /ios/**/build/
 /ios/**/DerivedData/
+/ios/**/.build/
+/ios/**/.swiftpm/
+**/.DS_Store
