@@ -72,6 +72,158 @@ final class WishwellUITests: XCTestCase {
         #endif
     }
 
+    // MARK: Live two-account social UI checks
+    // Run in order 1–4, alternating between two signed devices with different Apple accounts:
+    // TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 xcodebuild test ... -only-testing:WishwellUITests/WishwellUITests/testLiveSocial1OwnerPublishes
+    // They use development CloudKit and a separate synthetic library, and remove their public profiles at the end.
+
+    private let ownerName = "Wishwell Owner Check", peerName = "Wishwell Peer Check", liveList = "Live check list"
+
+    @MainActor func testLiveSocial1OwnerPublishes() throws {
+        let app = try launchLiveSocial()
+        try ensurePublicProfile(app, name: ownerName)
+        openArea(app, "My Lists")
+        let add = app.buttons["list.add"]; XCTAssertTrue(add.waitForExistence(timeout: 15)); add.tap()
+        let title = app.textFields["list.title"]; XCTAssertTrue(title.waitForExistence(timeout: 5)); title.tap(); title.typeText(liveList)
+        app.buttons["list.save"].tap()
+        tapLabel(app, liveList)
+        let addWish = app.buttons["wish.add"]; XCTAssertTrue(addWish.waitForExistence(timeout: 5)); addWish.tap()
+        let wish = app.textFields["wish.title"]; XCTAssertTrue(wish.waitForExistence(timeout: 5)); wish.tap(); wish.typeText("Live check wish")
+        let location = app.textFields["option.location.0"]; location.tap(); location.typeText("Test shop")
+        let price = app.textFields["option.price.0"]; price.tap(); price.typeText("10")
+        if app.buttons["keyboard.done"].exists { app.buttons["keyboard.done"].tap() }
+        app.buttons["wish.save"].tap()
+        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
+        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 10)); publish.tap()
+        app.buttons["social.list.confirmPublish"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["social.list.private"].waitForExistence(timeout: 30), "Publishing to development CloudKit did not finish")
+        attach(app, "Owner published list")
+    }
+
+    @MainActor func testLiveSocial2PeerInteractsReportsAndBlocks() throws {
+        let app = try launchLiveSocial()
+        try ensurePublicProfile(app, name: peerName)
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        tapLabel(app, ownerName, timeout: 30)
+        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15)); follow.tap()
+        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
+        tapLabel(app, liveList, timeout: 20)
+        let like = app.buttons["social.like"]; XCTAssertTrue(like.waitForExistence(timeout: 20))
+        if !like.isHittable { app.swipeUp() }
+        like.tap(); XCTAssertTrue(waitForLabel(like, "1 like", timeout: 20))
+        let field = app.textFields["social.comment.text"]
+        let editor = field.exists ? field : app.textViews["social.comment.text"]
+        editor.tap(); editor.typeText("Live check comment")
+        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+        app.buttons["social.comment.post"].tap()
+        XCTAssertTrue(app.staticTexts["Live check comment"].waitForExistence(timeout: 20))
+        app.buttons["social.list.report"].tap()
+        let reason = app.textFields["social.report.reason"].exists ? app.textFields["social.report.reason"] : app.textViews["social.report.reason"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 5)); reason.tap(); reason.typeText("Live UI check. No moderation action needed.")
+        app.buttons["social.report.submit"].tap()
+        XCTAssertTrue(app.staticTexts["Your report has been submitted for review. Thank you."].waitForExistence(timeout: 20))
+        app.buttons["social.report.done"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        let menu = app.buttons["social.person.menu"]; XCTAssertTrue(menu.waitForExistence(timeout: 10)); menu.tap()
+        app.buttons["Block this person"].tap(); app.buttons["social.person.confirmBlock"].firstMatch.tap()
+        search(app, "Wishwell Owner")
+        XCTAssertTrue(app.staticTexts["No people to show yet."].waitForExistence(timeout: 20), "Blocked person still appears in search")
+        openArea(app, "Settings")
+        let unblock = app.buttons["social.unblock"]; scrollTo(app, unblock); unblock.tap()
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        XCTAssertTrue(labelled(app, ownerName).waitForExistence(timeout: 30), "Unblocked person did not return to search")
+        attach(app, "Peer followed, liked, commented, reported, blocked and unblocked")
+    }
+
+    @MainActor func testLiveSocial3OwnerSeesActivityThenRemovesEverything() throws {
+        let app = try launchLiveSocial()
+        openArea(app, "Notifications")
+        for text in ["\(peerName) followed you", "\(peerName) liked \(liveList)", "\(peerName) commented on \(liveList)"] {
+            XCTAssertTrue(labelled(app, text).waitForExistence(timeout: 30), "Missing activity: \(text)")
+        }
+        app.buttons["social.activity.markRead"].tap()
+        attach(app, "Owner activity marked read")
+        openArea(app, "My Lists")
+        tapLabel(app, liveList)
+        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
+        let makePrivate = app.buttons["social.list.private"]; XCTAssertTrue(makePrivate.waitForExistence(timeout: 15)); makePrivate.tap()
+        app.buttons["social.list.confirmPrivate"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["social.list.publish"].waitForExistence(timeout: 30))
+        try removePublicProfile(app)
+    }
+
+    @MainActor func testLiveSocial4PeerSeesRemovalThenRemovesProfile() throws {
+        let app = try launchLiveSocial()
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        XCTAssertTrue(app.staticTexts["No people to show yet."].waitForExistence(timeout: 30), "Removed profile still appears in search")
+        try removePublicProfile(app)
+    }
+
+    @MainActor private func launchLiveSocial() throws -> XCUIApplication {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Live social checks need signed devices with distinct iCloud accounts.")
+        #else
+        guard ProcessInfo.processInfo.environment["WISHWELL_LIVE_SOCIAL"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 to run live social checks.") }
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication(); app.launchArguments = ["--social-live-ui"]; app.launch()
+        XCTAssertTrue(app.buttons["list.add"].waitForExistence(timeout: 20))
+        return app
+        #endif
+    }
+    @MainActor private func openArea(_ app: XCUIApplication, _ name: String) {
+        let tab = app.tabBars.buttons[name]
+        if tab.waitForExistence(timeout: 5) { tab.tap() } else { app.buttons[name].firstMatch.tap() }
+    }
+    @MainActor private func labelled(_ app: XCUIApplication, _ text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+    @MainActor private func tapLabel(_ app: XCUIApplication, _ text: String, timeout: TimeInterval = 10) {
+        let element = labelled(app, text); XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing \(text)"); element.tap()
+    }
+    @MainActor private func waitForLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", label), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+    @MainActor private func search(_ app: XCUIApplication, _ text: String) {
+        let field = app.searchFields.firstMatch; XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap()
+        if let value = field.value as? String, !value.isEmpty, value != field.placeholderValue {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        field.typeText(text)
+    }
+    @MainActor private func scrollTo(_ app: XCUIApplication, _ element: XCUIElement) {
+        for _ in 0..<6 where !element.isHittable { app.swipeUp() }
+    }
+    @MainActor private func ensurePublicProfile(_ app: XCUIApplication, name: String) throws {
+        openArea(app, "Settings")
+        let setup = app.buttons["Set up public profile"], edit = app.buttons["Edit public profile"]
+        scrollTo(app, setup.exists ? setup : edit)
+        guard setup.waitForExistence(timeout: 15) else { XCTAssertTrue(edit.exists, "Social is not enabled in this build"); return }
+        setup.tap()
+        let field = app.textFields["social.profile.name"]; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
+        if let value = field.value as? String, !value.isEmpty, value != field.placeholderValue {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        }
+        field.typeText(name)
+        app.buttons["social.profile.publish"].tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 30), "Publishing the profile did not finish")
+    }
+    @MainActor private func removePublicProfile(_ app: XCUIApplication) throws {
+        openArea(app, "Settings")
+        let remove = app.buttons["social.profile.remove"]; scrollTo(app, remove)
+        XCTAssertTrue(remove.waitForExistence(timeout: 10)); remove.tap()
+        app.buttons["social.profile.confirmRemove"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Set up public profile"].waitForExistence(timeout: 60), "Profile removal did not finish")
+        attach(app, "Public profile removed")
+    }
+    @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
+        let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image)
+    }
+
     @MainActor private func createWish(local: Bool) throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait

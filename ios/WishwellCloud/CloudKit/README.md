@@ -78,3 +78,31 @@ Diagnostic launch arguments (Debug, signed physical devices only):
 - `--social-live-check --verify-cascade LIST_ID LIKE_ID COMMENT_ID` polls for the three synthetic records to become absent.
 
 All supplied fixture IDs must begin with `wishwell-check-`. Results and fixture IDs are local diagnostic files, excluded from library backup. No private library is opened.
+
+## Synthetic fixtures
+
+Normal social reads ignore every record whose ID begins with `wishwell-check-`, so a leftover diagnostic profile can never be chosen as someone's public profile or appear in search, lists, threads, or activity. The records still exist on the server until removed.
+
+- `--social-live-check --cleanup-fixtures` lists the current account's synthetic records (likes, comments, follows, reports, lists, profiles) and deletes nothing.
+- `--social-live-check --cleanup-fixtures --confirm-delete` deletes exactly those records, children first, then confirms that each one is absent.
+
+Cleanup only touches records whose CloudKit creator is the current account and whose ID has the synthetic prefix. Run it on each test account's device. Keep one synthetic report from each account until Moderator access has been checked.
+
+## Moderator access
+
+The schema grants WWReport read/write to the `Moderator` role. As of October 30, 2026 no account has been confirmed to hold that role, and Moderator access has not been verified. Assigning the role is a privileged change: confirm the exact Apple account first, assign it in CloudKit Console (development), and never widen WWReport's World or authenticated grants instead.
+
+`--social-live-check --moderator-check REPORT_ID` fetches and creator-queries another account's synthetic report. It prints `PASS` only when the current account can read it, and `NOT READABLE` otherwise. Run it once before assigning the role (expect `NOT READABLE`) and once after (expect `PASS`). A third account without the role should still get `NOT READABLE`.
+
+## Live social UI tests
+
+The direct adapter checks above do not exercise the screens. `--social-live-ui` (Debug, signed devices only) enables social screens against development CloudKit for that launch only. It opens a separate on-device library named `social-live-test`, so no personal wishes are read or published, and shows a banner in Circle. Ordinary launches still honor `WishwellSocialEnabled = false`.
+
+Four UI tests drive it across two devices with distinct Apple accounts. They skip on simulators and unless the runner receives `WISHWELL_LIVE_SOCIAL=1`. Run them one at a time, in order, with `TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1` and `-only-testing:`:
+
+1. Owner device: `testLiveSocial1OwnerPublishes`. Publishes the profile "Wishwell Owner Check" and a one-wish list "Live check list".
+2. Peer device: `testLiveSocial2PeerInteractsReportsAndBlocks`. Publishes "Wishwell Peer Check", searches by full name, follows, likes, comments, reports the list, blocks (search must hide the owner) and unblocks.
+3. Owner device: `testLiveSocial3OwnerSeesActivityThenRemovesEverything`. Checks follow/like/comment activity, marks it read, makes the list private and removes the public profile.
+4. Peer device: `testLiveSocial4PeerSeesRemovalThenRemovesProfile`. Confirms the owner no longer appears, then removes its own profile.
+
+Afterwards only the peer's report remains, which is intentional for moderation review. Read-marker sync across a second device on the same account, alert pushes and iPad layout are not covered by these tests. As of October 30, 2026 these live UI tests have been written and compiled but not yet run on devices.

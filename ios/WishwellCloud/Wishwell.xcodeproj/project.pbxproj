@@ -263,6 +263,7 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BCT33A5W39;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nujoomdigital.wishwell.uitests;
@@ -446,6 +447,7 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BCT33A5W39;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nujoomdigital.wishwell.uitests;

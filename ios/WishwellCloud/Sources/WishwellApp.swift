@@ -36,11 +36,16 @@ import CryptoKit
             .environment(cloud).tint(Theme.green)
             .task {
                 #if DEBUG
-                let local = ProcessInfo.processInfo.arguments.contains("--local-preview") || ProcessInfo.processInfo.arguments.contains("--social-preview")
+                let arguments = ProcessInfo.processInfo.arguments
+                let liveUI = arguments.contains("--social-live-ui")
+                let local = liveUI || arguments.contains("--local-preview") || arguments.contains("--social-preview")
+                // Live social UI tests use a synthetic library that is never mixed with personal wishes.
+                let library: String? = liveUI ? "social-live-test" : nil
                 #else
                 let local = false
+                let library: String? = nil
                 #endif
-                if !liveSocialCheck { await cloud.open(local: local) }
+                if !liveSocialCheck { await cloud.open(local: local, library: library) }
             }
         }
     }
@@ -82,7 +87,7 @@ struct LibraryRoot: View {
         .environment(social)
         .task {
             social.hidden = Set(hidden.map(\.ownerID))
-            if cloud.localOnly && !social.isDemo { social.enabled = false }
+            if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
                 do { try await social.connect(); social.activityRows = try await social.activity() }
                 catch { social.error = error.localizedDescription }

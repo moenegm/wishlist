@@ -66,7 +66,7 @@ struct SettingsView: View {
                 if social.enabled {
                     Button(social.me == nil ? "Set up public profile" : "Edit public profile") { publicProfile = true }
                     if social.me != nil {
-                        Button("Remove public profile", role: .destructive) { removingProfile = true }.disabled(social.busy)
+                        Button("Remove public profile", role: .destructive) { removingProfile = true }.disabled(social.busy).accessibilityIdentifier("social.profile.remove")
                     }
                 } else { Text("Social sharing is awaiting CloudKit permission setup.").font(.footnote).foregroundStyle(.secondary) }
             }
@@ -77,7 +77,7 @@ struct SettingsView: View {
                             let owner = person.ownerID
                             for row in hidden where row.ownerID == owner { context.delete(row) }
                             do { try context.save(); social.hidden.remove(owner) } catch { context.rollback(); message = error.localizedDescription }
-                        }
+                        }.accessibilityIdentifier("social.unblock")
                     }
                 }
             }
@@ -121,7 +121,7 @@ struct SettingsView: View {
                     try await social.removeProfile()
                     for list in lists { list.publicRecordName = nil }
                     do { try context.save() } catch { context.rollback(); throw error }
-                } } }
+                } } }.accessibilityIdentifier("social.profile.confirmRemove")
             } message: { Text("This removes your public profile, published lists, and the interactions you authored. Your personal wishlists stay private and intact.") }
             .alert("Wishwell", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("OK") { message = nil } } message: { Text(message ?? "") }
     }

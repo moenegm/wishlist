@@ -78,6 +78,30 @@ final class SocialTests: XCTestCase {
         do { try await operation(); XCTFail("Expected operation to be rejected", file: file, line: line) } catch {}
     }
 
+    @MainActor func testDiagnosticFixturesNeverAppearInNormalSocialReads() async throws {
+        let (database, owner, privateList, _) = try await fixture()
+        // An older synthetic profile must not replace the real one.
+        let fixtureProfile = PublicProfile(id: "wishwell-check-1-profile", ownerID: "owner", name: "Wishwell permission test", photo: nil)
+        database.rows[fixtureProfile.id] = SocialRow(id: fixtureProfile.id, kind: .profile, creator: "owner", searchTokens: PublicProfile.tokens(for: fixtureProfile.name), payload: try JSONEncoder().encode(fixtureProfile), createdAt: .distantPast)
+        let fixtureList = PublicList(list: privateList, profile: fixtureProfile, id: "wishwell-check-1-list")
+        database.rows[fixtureList.id] = SocialRow(id: fixtureList.id, kind: .list, creator: "owner", parent: fixtureProfile.id, sourceID: privateList.id.uuidString, payload: try JSONEncoder().encode(fixtureList))
+        let profile = try await owner.profile(owner: "owner"); expectEqual(profile?.name, "Moe")
+        let found = try await owner.search("wishwell"); expectEqual(found.count, 0)
+        let list = try await owner.publicList(fixtureList.id); expectNil(list)
+        let lists = try await owner.lists(owner: "owner"); expectEqual(lists.count, 0)
+    }
+
+    @MainActor func testSearchMatchesEveryTypedWord() async throws {
+        let (database, owner, _, _) = try await fixture()
+        database.user = "friend"
+        let friend = SocialStore(database: database, enabled: true)
+        try await friend.saveProfile(name: "Tomas Ålund", photo: nil)
+        database.user = "owner"
+        let full = try await owner.search("tomas alund"); expectEqual(full.map(\.name), ["Tomas Ålund"])
+        let prefixes = try await owner.search("  Tom   Ål "); expectEqual(prefixes.map(\.name), ["Tomas Ålund"])
+        let mismatch = try await owner.search("tomas smith"); expectTrue(mismatch.isEmpty)
+    }
+
     @MainActor func testPrivateContentIsNotPublishedByCreatingOrEditingIt() async throws {
         let (database, _, privateList, _) = try await fixture()
         privateList.title = "Still private"; privateList.wishes?.first?.fulfilled = true

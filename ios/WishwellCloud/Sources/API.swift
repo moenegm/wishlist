@@ -49,13 +49,14 @@ import CryptoKit
               let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: false) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
-    func open(local: Bool = false) async {
+    /// `library` names a separate on-device store; only debug test launches pass one.
+    func open(local: Bool = false, library: String? = nil) async {
         guard !loading else { return }
         loading = true; error = nil
         let attempt = UUID(); generation = attempt
         defer { loading = false }
         do {
-            var identity = "on-device"
+            var identity = local ? (library ?? "on-device") : "on-device"
             if !local {
                 let cloud = CKContainer(identifier: Self.containerID)
                 guard try await cloud.accountStatus() == .available else {

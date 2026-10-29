@@ -5,6 +5,8 @@ import Observation
     let database: any SocialDatabase
     var enabled: Bool
     var isDemo = false
+    /// Debug-only: real development CloudKit social records with an isolated synthetic library.
+    var isLiveTest = false
     private(set) var actorID: String?
     private(set) var me: PublicProfile?
     var hidden: Set<String> = []
@@ -36,6 +38,15 @@ import Observation
         try Task.checkCancellation()
         guard try await actor() == expected else { throw WishwellError("Your iCloud account changed. Please try again.") }
     }
+    /// Records created by the debug-only live diagnostics never appear in normal social screens.
+    nonisolated static func isDiagnosticFixture(_ id: String) -> Bool { id.hasPrefix("wishwell-check-") }
+    private func fetch(_ id: String) async throws -> SocialRow? {
+        guard !Self.isDiagnosticFixture(id) else { return nil }
+        return try await database.record(id)
+    }
+    private func fetchRows(_ query: SocialQuery) async throws -> [SocialRow] {
+        try await database.query(query).filter { !Self.isDiagnosticFixture($0.id) }
+    }
     private func encode<T: Encodable>(_ value: T) throws -> Data { try JSONEncoder().encode(value) }
     private func profileValue(_ row: SocialRow) throws -> PublicProfile {
         guard row.kind == .profile else { throw WishwellError("This profile is unavailable.") }
@@ -46,7 +57,7 @@ import Observation
     }
     func profile(owner: String) async throws -> PublicProfile? {
         guard !hidden.contains(owner) else { return nil }
-        let rows = try await database.query(SocialQuery(kind: .profile, creator: owner))
+        let rows = try await fetchRows(SocialQuery(kind: .profile, creator: owner))
         let ordered = rows.filter { $0.creator == owner }.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
         return ordered.compactMap { try? profileValue($0) }.first
     }
@@ -55,7 +66,7 @@ import Observation
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 80, (photo?.count ?? 0) < 400_000 else { throw WishwellError("Use a name up to 80 characters and a smaller profile photo.") }
         var row: SocialRow
-        if let existing = try await profile(owner: user), let stored = try await database.record(existing.id) { row = stored }
+        if let existing = try await profile(owner: user), let stored = try await fetch(existing.id) { row = stored }
         else { row = SocialRow(kind: .profile, payload: Data()) }
         guard row.creator.isEmpty || row.creator == user else { throw WishwellError("You can only edit your own profile.") }
         row.payload = try encode(PublicProfile(id: row.id, ownerID: user, name: trimmed, photo: photo))
@@ -65,18 +76,20 @@ import Observation
     }
     func search(_ text: String) async throws -> [PublicProfile] {
         _ = try await actor()
-        let token = text.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-        guard !token.isEmpty else { return [] }
-        let rows = try await database.query(SocialQuery(kind: .profile, searchToken: token))
+        // Tokens are per-word prefixes, so query by the first word and require every typed word to match.
+        let words = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .split(whereSeparator: { $0.isWhitespace }).map { String($0.prefix(40)) }
+        guard let first = words.first else { return [] }
+        let rows = try await fetchRows(SocialQuery(kind: .profile, searchToken: first))
         var owners: Set<String> = []
         return rows.sorted { $0.createdAt < $1.createdAt }.compactMap { row in
-            guard !hidden.contains(row.creator), let profile = try? profileValue(row), owners.insert(row.creator).inserted else { return nil }
+            guard words.allSatisfy(row.searchTokens.contains), !hidden.contains(row.creator), let profile = try? profileValue(row), owners.insert(row.creator).inserted else { return nil }
             return profile
         }
     }
     func publicList(_ id: String) async throws -> PublicList? {
-        guard let row = try await database.record(id), row.kind == .list, !hidden.contains(row.creator),
-              let parent = row.parent, let profileRow = try await database.record(parent), profileRow.kind == .profile,
+        guard let row = try await fetch(id), row.kind == .list, !hidden.contains(row.creator),
+              let parent = row.parent, let profileRow = try await fetch(parent), profileRow.kind == .profile,
               profileRow.creator == row.creator else { return nil }
         guard var list: PublicList = try? row.decode(), list.profileID == parent,
               row.sourceID == list.sourceID.uuidString, Set(list.wishes.map(\.id)).count == list.wishes.count else { return nil }
@@ -86,7 +99,7 @@ import Observation
     }
     func lists(owner: String) async throws -> [PublicList] {
         guard !hidden.contains(owner) else { return [] }
-        let rows = try await database.query(SocialQuery(kind: .list, creator: owner))
+        let rows = try await fetchRows(SocialQuery(kind: .list, creator: owner))
         var lists: [PublicList] = []
         for row in rows where row.creator == owner { if let list = try await publicList(row.id) { lists.append(list) } }
         return lists.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
@@ -98,7 +111,7 @@ import Observation
         guard payload.count < 750_000 else { throw WishwellError("This wishlist is too large to publish as one shared list.") }
         var row: SocialRow
         if let existingID {
-            guard let existing = try await database.record(existingID) else { throw WishwellError("This wishlist was unpublished on another device. Refresh its sharing status before publishing it again.") }
+            guard let existing = try await fetch(existingID) else { throw WishwellError("This wishlist was unpublished on another device. Refresh its sharing status before publishing it again.") }
             guard existing.creator == user, existing.kind == .list else { throw WishwellError("You can only publish your own wishlist.") }
             row = existing
         } else { row = SocialRow(id: snapshot.id, kind: .list, payload: payload) }
@@ -110,25 +123,25 @@ import Observation
     }
     func unpublish(_ id: String) async throws {
         let user = try await actor()
-        guard let row = try await database.record(id) else { return }
+        guard let row = try await fetch(id) else { return }
         guard row.kind == .list, row.creator == user else { throw WishwellError("You can only unpublish your own wishlist.") }
         try await ensureActor(user); try await database.delete(row)
     }
     func following() async throws -> [PublicProfile] {
         let user = try await actor()
-        let rows = try await database.query(SocialQuery(kind: .follow, creator: user))
+        let rows = try await fetchRows(SocialQuery(kind: .follow, creator: user))
         var result: [PublicProfile] = []; var seen: Set<String> = []
         for row in rows where row.creator == user {
-            if let parent = row.parent, let target = try await database.record(parent), target.kind == .profile,
+            if let parent = row.parent, let target = try await fetch(parent), target.kind == .profile,
                !hidden.contains(target.creator), seen.insert(target.creator).inserted { result.append(try profileValue(target)) }
         }
         return result.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     func followers(of person: PublicProfile) async throws -> [PublicProfile] {
-        guard let target = try await database.record(person.id), target.kind == .profile, target.creator == person.ownerID else { return [] }
+        guard let target = try await fetch(person.id), target.kind == .profile, target.creator == person.ownerID else { return [] }
         var result: [PublicProfile] = []; var seen: Set<String> = []
-        for profileRow in try await database.query(SocialQuery(kind: .profile, creator: person.ownerID)) where profileRow.creator == person.ownerID {
-            for row in try await database.query(SocialQuery(kind: .follow, parent: profileRow.id)) where row.parent == profileRow.id {
+        for profileRow in try await fetchRows(SocialQuery(kind: .profile, creator: person.ownerID)) where profileRow.creator == person.ownerID {
+            for row in try await fetchRows(SocialQuery(kind: .follow, parent: profileRow.id)) where row.parent == profileRow.id {
                 if seen.insert(row.creator).inserted, let profile = try await profile(owner: row.creator) { result.append(profile) }
             }
         }
@@ -137,10 +150,10 @@ import Observation
     func follow(_ person: PublicProfile, enabled: Bool) async throws {
         let user = try await actor()
         guard user != person.ownerID, !hidden.contains(person.ownerID),
-              let target = try await database.record(person.id), target.kind == .profile, target.creator == person.ownerID else { throw WishwellError("This person is unavailable.") }
+              let target = try await fetch(person.id), target.kind == .profile, target.creator == person.ownerID else { throw WishwellError("This person is unavailable.") }
         var existing: [SocialRow] = []
-        for row in try await database.query(SocialQuery(kind: .follow, creator: user)) where row.creator == user {
-            if let parent = row.parent, let target = try await database.record(parent), target.kind == .profile, target.creator == person.ownerID { existing.append(row) }
+        for row in try await fetchRows(SocialQuery(kind: .follow, creator: user)) where row.creator == user {
+            if let parent = row.parent, let target = try await fetch(parent), target.kind == .profile, target.creator == person.ownerID { existing.append(row) }
         }
         try await ensureActor(user)
         if enabled {
@@ -151,8 +164,8 @@ import Observation
     func thread(listID: String, wishID: UUID?) async throws -> SocialThread {
         let user = try await actor()
         guard let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("This shared wish is no longer available.") }
-        let likes = try await database.query(SocialQuery(kind: .like, parent: listID))
-        let comments = try await database.query(SocialQuery(kind: .comment, parent: listID))
+        let likes = try await fetchRows(SocialQuery(kind: .like, parent: listID))
+        let comments = try await fetchRows(SocialQuery(kind: .comment, parent: listID))
         let validLikes = likes.filter {
             guard $0.parent == listID, !hidden.contains($0.creator) else { return false }
             guard let action = try? $0.decode(SocialAction.self) else { return false }
@@ -173,7 +186,7 @@ import Observation
     func setLike(listID: String, wishID: UUID?, liked: Bool) async throws {
         let user = try await actor()
         guard me != nil, let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("Publish a profile and open an available public wish first.") }
-        let rows = try await database.query(SocialQuery(kind: .like, creator: user, parent: listID))
+        let rows = try await fetchRows(SocialQuery(kind: .like, creator: user, parent: listID))
         let own = rows.filter {
             guard $0.creator == user, $0.parent == listID else { return false }
             guard let action = try? $0.decode(SocialAction.self) else { return false }
@@ -193,13 +206,13 @@ import Observation
     }
     func deleteComment(_ id: String) async throws {
         let user = try await actor()
-        guard let row = try await database.record(id) else { return }
+        guard let row = try await fetch(id) else { return }
         guard row.kind == .comment, row.creator == user else { throw WishwellError("You can only delete your own comments.") }
         try await ensureActor(user); try await database.delete(row)
     }
     func report(_ id: String, reason: String) async throws {
         let user = try await actor()
-        guard let target = try await database.record(id), target.kind != .report else { throw WishwellError("This content is unavailable.") }
+        guard let target = try await fetch(id), target.kind != .report else { throw WishwellError("This content is unavailable.") }
         guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, reason.count <= 1000 else { throw WishwellError("Please enter a reason up to 1,000 characters.") }
         let payload = try encode(["target": target.id, "kind": target.kind.rawValue, "reason": reason])
         try await ensureActor(user)
@@ -207,12 +220,12 @@ import Observation
     }
     func removeProfile() async throws {
         let user = try await actor()
-        let profiles = try await database.query(SocialQuery(kind: .profile, creator: user))
+        let profiles = try await fetchRows(SocialQuery(kind: .profile, creator: user))
         for kind in [SocialKind.like, .comment, .follow] {
-            let rows = try await database.query(SocialQuery(kind: kind, creator: user))
+            let rows = try await fetchRows(SocialQuery(kind: kind, creator: user))
             for row in rows where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         }
-        let lists = try await database.query(SocialQuery(kind: .list, creator: user))
+        let lists = try await fetchRows(SocialQuery(kind: .list, creator: user))
         for row in lists where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         for row in profiles where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         me = nil
@@ -221,17 +234,17 @@ import Observation
         let user = try await actor()
         var activity: [SocialActivity] = []
         var seen: Set<String> = []
-        let profiles = try await database.query(SocialQuery(kind: .profile, creator: user))
+        let profiles = try await fetchRows(SocialQuery(kind: .profile, creator: user))
         for own in profiles where own.creator == user {
-            for row in try await database.query(SocialQuery(kind: .follow, parent: own.id)) where row.parent == own.id && row.creator != user {
+            for row in try await fetchRows(SocialQuery(kind: .follow, parent: own.id)) where row.parent == own.id && row.creator != user {
                 if seen.insert("follow-\(row.creator)").inserted, let author = try await profile(owner: row.creator) {
                     activity.append(SocialActivity(id: row.id, actor: author, message: "\(author.name) followed you", date: row.createdAt, icon: "person.badge.plus"))
                 }
             }
         }
-        for own in try await database.query(SocialQuery(kind: .list, creator: user)) where own.creator == user {
+        for own in try await fetchRows(SocialQuery(kind: .list, creator: user)) where own.creator == user {
             for kind in [SocialKind.like, .comment] {
-                let rows = try await database.query(SocialQuery(kind: kind, parent: own.id))
+                let rows = try await fetchRows(SocialQuery(kind: kind, parent: own.id))
                 guard let current = try await publicList(own.id) else { continue }
                 for row in rows where row.parent == own.id && row.creator != user && !hidden.contains(row.creator) {
                     guard let action: SocialAction = try? row.decode() else { continue }
@@ -243,9 +256,9 @@ import Observation
                 }
             }
         }
-        let follows = try await database.query(SocialQuery(kind: .follow, creator: user))
+        let follows = try await fetchRows(SocialQuery(kind: .follow, creator: user))
         for follow in follows where follow.creator == user {
-            guard let parent = follow.parent, let row = try await database.record(parent), row.kind == .profile,
+            guard let parent = follow.parent, let row = try await fetch(parent), row.kind == .profile,
                   !hidden.contains(row.creator), let author = try await profile(owner: row.creator) else { continue }
             for list in try await lists(owner: row.creator) {
                 for wish in list.wishes where wish.createdAt >= follow.createdAt {

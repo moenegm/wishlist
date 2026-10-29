@@ -7,6 +7,11 @@ extension SocialStore {
         if ProcessInfo.processInfo.arguments.contains("--social-preview") {
             let store = SocialStore(database: DemoSocialDatabase(), enabled: true); store.isDemo = true; return store
         }
+        #if !targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--social-live-ui") {
+            let store = SocialStore(enabled: true); store.isLiveTest = true; return store
+        }
+        #endif
         #endif
         return SocialStore()
     }
@@ -29,6 +34,7 @@ struct CircleView: View {
     var body: some View {
         List {
             if social.isDemo { Text("Social simulator preview · No data leaves this device").font(.caption).foregroundStyle(.secondary) }
+            if social.isLiveTest { Text("Live social test · Development CloudKit with a separate test library").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.liveTestBanner") }
             if !social.enabled {
                 ContentUnavailableView("Your circle is being prepared", systemImage: "person.2", description: Text("CloudKit’s social permissions need to be configured before publishing. Your private library is ready to use."))
             } else if social.me == nil {
@@ -161,7 +167,7 @@ struct PublicPersonView: View {
                     Menu {
                         Button("Report profile", systemImage: "flag") { reporting = true }
                         Button("Block this person", systemImage: "person.crop.circle.badge.xmark", role: .destructive) { blocking = true }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                    } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("social.person.menu")
                 }
             }.sheet(isPresented: $reporting) { ReportView(id: person.id) }
             .confirmationDialog("Block \(person.name)?", isPresented: $blocking, titleVisibility: .visible) {
@@ -169,7 +175,7 @@ struct PublicPersonView: View {
                     context.insert(HiddenPerson(ownerID: person.ownerID))
                     do { try context.save(); social.hidden.insert(person.ownerID); dismiss() }
                     catch { context.rollback(); social.error = error.localizedDescription }
-                }
+                }.accessibilityIdentifier("social.person.confirmBlock")
             } message: { Text("Their content and interactions will be hidden on your devices. Anything you publish remains public. You can unblock them in Settings.") }
             .task { await load() }.refreshable { await load() }
     }
@@ -210,7 +216,7 @@ struct PublicListView: View {
             } else if let message { ContentUnavailableView("Wishlist unavailable", systemImage: "lock", description: Text(message)) }
             else { ProgressView() }
         }.background(Theme.background).navigationTitle("Shared wishlist").navigationBarTitleDisplayMode(.inline)
-            .toolbar { if let list, list.ownerID != social.actorID { Button("Report", systemImage: "flag") { reporting = true } } }
+            .toolbar { if let list, list.ownerID != social.actorID { Button("Report", systemImage: "flag") { reporting = true }.accessibilityIdentifier("social.list.report") } }
             .sheet(isPresented: $reporting) { ReportView(id: id) }
             .task { await load() }.refreshable { await load() }
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
@@ -364,10 +370,10 @@ struct ReportView: View {
                 if sent { Text("Your report has been submitted for review. Thank you.") }
                 else {
                     Text("Tell us what’s wrong. Reports are visible to you and Wishwell’s moderation team, not other members.").font(.footnote)
-                    TextField("Reason for reporting", text: $reason, axis: .vertical).lineLimit(4...8)
-                    Button("Submit report") { Task { await social.perform { try await social.report(id, reason: reason); sent = true } } }.disabled(social.busy || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 1000)
+                    TextField("Reason for reporting", text: $reason, axis: .vertical).lineLimit(4...8).accessibilityIdentifier("social.report.reason")
+                    Button("Submit report") { Task { await social.perform { try await social.report(id, reason: reason); sent = true } } }.disabled(social.busy || reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reason.count > 1000).accessibilityIdentifier("social.report.submit")
                 }
-            }.navigationTitle("Report content").toolbar { Button("Done") { dismiss() }.disabled(social.busy) }
+            }.navigationTitle("Report content").toolbar { Button("Done") { dismiss() }.disabled(social.busy).accessibilityIdentifier("social.report.done") }
         }
     }
 }
@@ -390,7 +396,7 @@ struct ActivityView: View {
                 }
             }
         }.navigationTitle("Notifications")
-            .toolbar { Button("Mark shown as read") { markRead() }.disabled(rows.isEmpty) }
+            .toolbar { Button("Mark shown as read") { markRead() }.disabled(rows.isEmpty).accessibilityIdentifier("social.activity.markRead") }
             .task { await load() }.refreshable { await load() }
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
     }
@@ -498,8 +504,49 @@ struct LiveSocialCheckView: View {
     private func require(_ condition: Bool, _ message: String) throws {
         guard condition else { throw WishwellError(message) }
     }
+    /// Lists this account's synthetic fixtures; deletes them only with --confirm-delete.
+    @MainActor private func cleanupFixtures(user: String, delete: Bool) async throws {
+        var found: [SocialRow] = []
+        // Children first, so a cascade never races the explicit deletes that follow.
+        for kind in [SocialKind.like, .comment, .follow, .report, .list, .profile] {
+            found += try await database.query(SocialQuery(kind: kind, creator: user)).filter { $0.creator == user && SocialStore.isDiagnosticFixture($0.id) }
+        }
+        note("Found \(found.count) synthetic records owned by this account")
+        for row in found { note("- \(row.kind.rawValue) \(row.id)") }
+        guard delete else { note("DRY RUN: nothing deleted. Relaunch with --confirm-delete to remove exactly these records."); return }
+        for row in found {
+            do { try await database.delete(row) } catch let error as CKError where error.code == .unknownItem { }
+        }
+        var remaining: [String] = []
+        for row in found { if try await database.record(row.id) != nil { remaining.append(row.id) } }
+        try require(remaining.isEmpty, "Still present: \(remaining.joined(separator: ", "))")
+        note("COMPLETE: removed \(found.count) synthetic records owned by this account.")
+    }
+    /// Reads another account's synthetic report. Succeeds only for an account holding the Moderator role.
+    @MainActor private func moderatorCheck(user: String, reportID: String) async throws {
+        try require(SocialStore.isDiagnosticFixture(reportID), "Only synthetic reports may be checked.")
+        let report: SocialRow?
+        do { report = try await database.record(reportID) }
+        catch let error as CKError where error.code == .permissionFailure { report = nil }
+        guard let report else {
+            note("NOT READABLE: this account cannot read the report. Expected unless it holds the Moderator role.")
+            return
+        }
+        try require(report.kind == .report && report.creator != user, "Use a report created by another account.")
+        let listed = try await database.query(SocialQuery(kind: .report, creator: report.creator))
+        try require(listed.contains { $0.id == reportID }, "Report was fetched but not returned by a creator query.")
+        note("PASS: this account can read and query another account's report (Moderator access).")
+    }
     @MainActor private func cascadeCheck(user: String) async throws -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--cleanup-fixtures") {
+            try await cleanupFixtures(user: user, delete: arguments.contains("--confirm-delete"))
+            return true
+        }
+        if let index = arguments.firstIndex(of: "--moderator-check"), arguments.indices.contains(index + 1) {
+            try await moderatorCheck(user: user, reportID: arguments[index + 1])
+            return true
+        }
         if let index = arguments.firstIndex(of: "--unpublish-fixture"), arguments.indices.contains(index + 1) {
             let id = arguments[index + 1]
             try require(id.hasPrefix("wishwell-check-"), "Only synthetic fixtures may be unpublished.")
