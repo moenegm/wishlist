@@ -171,15 +171,66 @@ final class WishwellUITests: XCTestCase {
         try removePublicProfile(app)
     }
 
-    @MainActor private func launchLiveSocial() throws -> XCUIApplication {
+    // MARK: Read markers across two devices on the same Apple account
+    // Owner iPhone (1, 3), peer iPhone (2, 5), owner iPad (4). Steps 1, 3 and 4 open the owner's
+    // personal iCloud library with live social for that launch; nothing in it is published.
+
+    @MainActor func testLiveReadSync1OwnerProfile() throws {
+        let app = try launchLiveSocial(personalLibrary: true)
+        try ensurePublicProfile(app, name: ownerName)
+    }
+
+    @MainActor func testLiveReadSync2PeerFollows() throws {
+        let app = try launchLiveSocial()
+        try ensurePublicProfile(app, name: peerName)
+        unblockEveryone(app)
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        tapLabel(app, ownerName, timeout: 30)
+        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
+        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
+        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
+    }
+
+    @MainActor func testLiveReadSync3OwnerMarksRead() throws {
+        let app = try launchLiveSocial(personalLibrary: true)
+        openArea(app, "Notifications")
+        let row = labelled(app, "\(peerName) followed you")
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "Follow notification missing")
+        app.buttons["social.activity.markRead"].tap()
+        XCTAssertTrue(waitForValue(row, equalTo: "Read", timeout: 10))
+        // Keep the app open so private sync can upload the read marker.
+        sleep(30)
+        attach(app, "Owner iPhone marked follow as read")
+    }
+
+    @MainActor func testLiveReadSync4SecondDeviceSeesReadThenRemovesProfile() throws {
+        let app = try launchLiveSocial(personalLibrary: true)
+        openArea(app, "Notifications")
+        let row = labelled(app, "\(peerName) followed you")
+        XCTAssertTrue(row.waitForExistence(timeout: 60), "Follow notification missing on second device")
+        XCTAssertTrue(waitForValue(row, equalTo: "Read", timeout: 240), "Read marker did not sync from the other device")
+        attach(app, "Second device shows synced read marker")
+        openArea(app, "Circle")
+        XCTAssertTrue(app.buttons["Followers"].waitForExistence(timeout: 30), "Circle did not load on the second device")
+        attach(app, "Circle on second device")
+        try removePublicProfile(app)
+    }
+
+    @MainActor func testLiveReadSync5PeerRemovesProfile() throws {
+        let app = try launchLiveSocial()
+        try removePublicProfile(app)
+    }
+
+    @MainActor private func launchLiveSocial(personalLibrary: Bool = false) throws -> XCUIApplication {
         #if targetEnvironment(simulator)
         throw XCTSkip("Live social checks need signed devices with distinct iCloud accounts.")
         #else
         guard ProcessInfo.processInfo.environment["WISHWELL_LIVE_SOCIAL"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 to run live social checks.") }
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
-        let app = XCUIApplication(); app.launchArguments = ["--social-live-ui"]; app.launch()
-        XCTAssertTrue(app.buttons["list.add"].waitForExistence(timeout: 20))
+        let app = XCUIApplication(); app.launchArguments = [personalLibrary ? "--social-live-cloud" : "--social-live-ui"]; app.launch()
+        XCTAssertTrue(app.buttons["list.add"].waitForExistence(timeout: 60))
         return app
         #endif
     }

@@ -8,7 +8,8 @@ extension SocialStore {
             let store = SocialStore(database: DemoSocialDatabase(), enabled: true); store.isDemo = true; return store
         }
         #if !targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("--social-live-ui") {
+        // --social-live-cloud uses the personal iCloud library, for checking read markers across devices.
+        if ProcessInfo.processInfo.arguments.contains("--social-live-ui") || ProcessInfo.processInfo.arguments.contains("--social-live-cloud") {
             let store = SocialStore(enabled: true); store.isLiveTest = true; return store
         }
         #endif
@@ -24,6 +25,7 @@ extension SocialStore {
 
 struct CircleView: View {
     @Environment(SocialStore.self) private var social
+    @Environment(CloudStore.self) private var cloud
     @State private var query = ""
     @State private var group = "following"
     @State private var people: [PublicProfile] = []
@@ -34,7 +36,7 @@ struct CircleView: View {
     var body: some View {
         List {
             if social.isDemo { Text("Social simulator preview · No data leaves this device").font(.caption).foregroundStyle(.secondary) }
-            if social.isLiveTest { Text("Live social test · Development CloudKit with a separate test library").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.liveTestBanner") }
+            if social.isLiveTest { Text("Live social test · Development CloudKit\(cloud.localOnly ? " with a separate test library" : "")").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.liveTestBanner") }
             if !social.enabled {
                 ContentUnavailableView("Your circle is being prepared", systemImage: "person.2", description: Text("CloudKit’s social permissions need to be configured before publishing. Your private library is ready to use."))
             } else if social.me == nil {
@@ -404,7 +406,7 @@ struct ActivityView: View {
                 Group {
                     if let list = row.list { NavigationLink { PublicListView(id: list.id) } label: { activityRow(row) } }
                     else { NavigationLink { PublicPersonView(person: row.actor) } label: { activityRow(row) } }
-                }
+                }.accessibilityValue(readState.contains { $0.id == row.id } ? "Read" : "Unread")
             }
         }.navigationTitle("Notifications")
             .toolbar { Button("Mark shown as read") { markRead() }.disabled(rows.isEmpty).accessibilityIdentifier("social.activity.markRead") }
