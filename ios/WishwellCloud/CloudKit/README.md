@@ -128,3 +128,11 @@ Still unverified: Moderator access, read markers syncing to a second device on t
 ### Fixture dry run, October 30, 2026
 
 `--cleanup-fixtures` without `--confirm-delete` listed 16 synthetic records on the user's account and 3 on the peer account (follow, report, profile), all with the `wishwell-check-` prefix. After the Moderator check, `--confirm-delete` removed all of them: 3 on the peer account in one pass, and 16 on the owner's account in two passes. The first pass stopped on a CloudKit "Internal server error" after 7 deletions, and a rerun removed and confirmed the remaining 9. No `wishwell-check-` records remain for either account. The three "Live UI check" reports from the UI tests remain intentionally as sample moderation entries.
+
+## Read markers across devices
+
+`--social-live-cloud` (Debug, signed devices) turns on live social for one launch while using the personal iCloud library, so private read markers can sync. It publishes nothing from the library. The five `testLiveReadSync…` UI tests use it: the owner publishes a profile on the iPhone, the peer follows it, the iPhone marks the notification read, and an iPad on the same Apple account then shows that notification as read. The iPad removes the owner profile and the peer removes its own.
+
+All five passed on October 30, 2026 (owner iPhone, owner iPad, peer iPhone). The iPad showed the read marker within about 40 seconds, and the Circle and Notifications screens worked in the iPad split layout.
+
+Before production: the development schema only gained `CD_SocialReadState` when the first read marker synced. `CD_HiddenPerson` and `CD_LocalProfile` may still be missing. Development creates missing types on first save, but production does not, so check a fresh development export for every SwiftData model before deploying.
