@@ -75,7 +75,7 @@ DEFINE SCHEMA
         parent REFERENCE QUERYABLE,
         sourceID STRING QUERYABLE,
         searchTokens LIST<STRING> QUERYABLE,
-        GRANT WRITE TO "_creator",
+        GRANT READ, WRITE TO "_creator",
         GRANT CREATE TO "_icloud",
         GRANT READ, WRITE TO Moderator
     );

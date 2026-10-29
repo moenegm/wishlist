@@ -271,5 +271,7 @@ final class SocialTests: XCTestCase {
         XCTAssertFalse(schema.contains("GRANT WRITE TO \"_icloud\""))
         XCTAssertFalse(schema.contains("GRANT WRITE TO \"_world\""))
         XCTAssertTrue(report.contains("GRANT READ, WRITE TO Moderator"))
+        XCTAssertTrue(report.contains("GRANT READ, WRITE TO \"_creator\""))
+        XCTAssertFalse(report.contains("GRANT READ TO \"_icloud\""))
     }
 }

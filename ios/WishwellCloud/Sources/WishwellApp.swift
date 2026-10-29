@@ -4,10 +4,21 @@ import CryptoKit
 
 @main struct WishwellCloudApp: App {
     @State private var cloud = CloudStore()
+    private var liveSocialCheck: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--social-live-check")
+        #else
+        false
+        #endif
+    }
     var body: some Scene {
         WindowGroup {
             Group {
-                if let container = cloud.container {
+                if liveSocialCheck {
+                    #if DEBUG
+                    LiveSocialCheckView()
+                    #endif
+                } else if let container = cloud.container {
                     LibraryRoot().modelContainer(container).id(ObjectIdentifier(container))
                 } else {
                     VStack(spacing: 22) {
@@ -29,7 +40,7 @@ import CryptoKit
                 #else
                 let local = false
                 #endif
-                await cloud.open(local: local)
+                if !liveSocialCheck { await cloud.open(local: local) }
             }
         }
     }

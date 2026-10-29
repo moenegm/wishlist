@@ -470,3 +470,79 @@ struct ListSharingView: View {
         }
     }
 }
+
+#if DEBUG
+import CloudKit
+
+/// Runs only when explicitly launched with --social-live-check on a signed device.
+struct LiveSocialCheckView: View {
+    @State private var messages: [String] = []
+    @State private var running = false
+    private let database = CloudSocialDatabase()
+    var body: some View {
+        NavigationStack {
+            List {
+                Text("Development CloudKit checks").font(.headline)
+                Text("Uses synthetic public records only. Your private library is not opened.")
+                ForEach(Array(messages.enumerated()), id: \.offset) { _, message in Text(message).font(.caption.monospaced()) }
+                if running { ProgressView("Checking your account…") }
+            }.navigationTitle("Wishwell test")
+        }.task { await run() }
+    }
+    private func note(_ message: String) {
+        messages.append(message)
+        print("WISHWELL_LIVE_CHECK: \(message)")
+        let output = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("social-live-check-results.txt")
+        try? messages.joined(separator: "\n").write(to: output, atomically: true, encoding: .utf8)
+    }
+    private func require(_ condition: Bool, _ message: String) throws {
+        guard condition else { throw WishwellError(message) }
+    }
+    @MainActor private func run() async {
+        guard !running, messages.isEmpty else { return }
+        running = true; defer { running = false }
+        do {
+            #if targetEnvironment(simulator)
+            throw WishwellError("Use a signed physical device for this check.")
+            #else
+            let encoder = JSONEncoder()
+            let user = try await database.userID()
+            note("PASS: signed-in CloudKit identity")
+            let prefix = "wishwell-check-\(UUID().uuidString)"
+            let profileID = prefix + "-profile", listID = prefix + "-list", reportID = prefix + "-report"
+            let manifest = ["profileID": profileID, "listID": listID, "reportID": reportID]
+            let file = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("social-live-check-fixture.json")
+            try encoder.encode(manifest).write(to: file, options: .atomic)
+            let profile = PublicProfile(id: profileID, ownerID: user, name: "Wishwell permission test", photo: nil)
+            let savedProfile = try await database.save(SocialRow(id: profileID, kind: .profile, sourceID: prefix, searchTokens: PublicProfile.tokens(for: profile.name), payload: encoder.encode(profile)))
+            try require(savedProfile.creator == user, "Creator metadata did not match this account.")
+            note("PASS: create profile and server-derived authorship")
+            guard var fetched = try await database.record(profileID) else { throw WishwellError("Created profile could not be read.") }
+            fetched.payload = try encoder.encode(profile)
+            _ = try await database.save(fetched)
+            note("PASS: read and update own profile")
+            let source = WishList(title: "Wishwell permission test — synthetic")
+            let snapshot = PublicList(list: source, profile: profile, id: listID)
+            let list = try await database.save(SocialRow(id: listID, kind: .list, parent: profileID, sourceID: source.id.uuidString, payload: encoder.encode(snapshot)))
+            try require(list.creator == user, "List creator metadata did not match.")
+            note("PASS: publish synthetic list")
+            _ = try await database.save(SocialRow(id: prefix + "-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+            _ = try await database.save(SocialRow(id: prefix + "-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic permission check"))))
+            note("PASS: create own like and comment")
+            _ = try await database.save(SocialRow(id: reportID, kind: .report, payload: encoder.encode(["target": listID, "reason": "Synthetic permission test; no moderation action needed"])))
+            try require(try await database.record(reportID) != nil, "Own report could not be read.")
+            note("PASS: create and read own report")
+            let temporary = try await database.save(SocialRow(id: prefix + "-stale", kind: .list, parent: profileID, payload: encoder.encode(snapshot)))
+            try await database.delete(temporary)
+            do {
+                _ = try await database.save(temporary)
+                throw WishwellError("A stale save recreated a deleted root.")
+            } catch let error as CKError where error.code == .unknownItem || error.code == .serverRecordChanged {
+                note("PASS: server rejects stale save after unpublish")
+            }
+            note("COMPLETE: first-account checks passed. Cross-account permissions are still unverified.")
+            #endif
+        } catch { note("FAIL: \(error.localizedDescription)") }
+    }
+}
+#endif
