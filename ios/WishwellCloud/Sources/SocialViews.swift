@@ -647,7 +647,7 @@ struct LiveSocialCheckView: View {
             #else
             let encoder = JSONEncoder()
             let user = try await database.userID()
-            note("PASS: signed-in CloudKit identity")
+            note("PASS: signed-in CloudKit identity, user record \(user)")
             if try await cascadeCheck(user: user) { return }
             let prefix = "wishwell-check-\(UUID().uuidString)"
             let profileID = prefix + "-profile", listID = prefix + "-list", reportID = prefix + "-report"

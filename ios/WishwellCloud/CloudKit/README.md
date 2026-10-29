@@ -90,9 +90,13 @@ Cleanup only touches records whose CloudKit creator is the current account and w
 
 ## Moderator access
 
-The schema grants WWReport read/write to the `Moderator` role. As of October 30, 2026 no account has been confirmed to hold that role, and Moderator access has not been verified. Assigning the role is a privileged change: confirm the exact Apple account first, assign it in CloudKit Console (development), and never widen WWReport's World or authenticated grants instead.
+The schema grants WWReport read/write to the `Moderator` role. Assigning the role is a privileged change: confirm the exact Apple account first, assign it in CloudKit Console, and never widen WWReport's World or authenticated grants instead. In Console: Records, Public Database, Fetch Records by the account's user record name (the diagnostics print it), open the `Users` record, and tick the role under Security Roles. Console applies the change immediately.
+
+On October 30, 2026, with the owner's confirmation, the Moderator role was assigned in **development** to the owner's account (user record `_69221177a54ae82aeb03666e638595cc`). Production has no role assignments; they must be repeated there after the schema is deployed.
 
 `--social-live-check --moderator-check REPORT_ID` fetches and creator-queries another account's synthetic report. It prints `PASS` only when the current account can read it, and `NOT READABLE` otherwise. Run it once before assigning the role (expect `NOT READABLE`) and once after (expect `PASS`). A third account without the role should still get `NOT READABLE`.
+
+Verified on October 30, 2026 against development: before assignment, the owner's account got `NOT READABLE` for the second account's synthetic report. After assignment it could fetch and creator-query that report (`PASS`). The second account, without the role, still got `NOT READABLE` for one of the owner's reports.
 
 ## Live social UI tests
 
@@ -123,4 +127,4 @@ Still unverified: Moderator access, read markers syncing to a second device on t
 
 ### Fixture dry run, October 30, 2026
 
-`--cleanup-fixtures` without `--confirm-delete` listed 16 synthetic records on the user's account and 3 on the peer account (follow, report, profile), all with the `wishwell-check-` prefix. Nothing has been deleted yet; deletion is deferred until the Moderator check, which needs one of these synthetic reports.
+`--cleanup-fixtures` without `--confirm-delete` listed 16 synthetic records on the user's account and 3 on the peer account (follow, report, profile), all with the `wishwell-check-` prefix. After the Moderator check, `--confirm-delete` removed all of them: 3 on the peer account in one pass, and 16 on the owner's account in two passes. The first pass stopped on a CloudKit "Internal server error" after 7 deletions, and a rerun removed and confirmed the remaining 9. No `wishwell-check-` records remain for either account. The three "Live UI check" reports from the UI tests remain intentionally as sample moderation entries.
