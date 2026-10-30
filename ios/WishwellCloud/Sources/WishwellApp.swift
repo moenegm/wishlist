@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
         await send("devices", method: "POST", ["token": token, "user": user, "environment": environment])
     }
+    /// Keeps the number the website puts on the app icon in step with what's unread in the app.
+    static func updateBadge(_ unread: Int) async {
+        guard let token = UserDefaults.standard.string(forKey: tokenKey), let user = UserDefaults.standard.string(forKey: userKey) else { return }
+        await send("devices", method: "POST", ["token": token, "user": user, "environment": environment, "unread": String(unread)])
+    }
     /// When the public account is turned off, this phone stops getting notifications.
     static func unregister() async {
         UserDefaults.standard.removeObject(forKey: userKey)
@@ -228,7 +233,11 @@ struct LibraryRoot: View {
                     social.didSave = { record, profile in await PushService.report(record: record, profile: profile) }
                     try await social.connect()
                     Task { await social.warmCircle() }
-                    if social.me != nil, let user = social.actorID { await PushService.register(user: user) }
+                    if social.me != nil, let user = social.actorID {
+                        await PushService.register(user: user)
+                        // The icon may still show notifications already read on another device.
+                        await PushService.updateBadge(unreadCount)
+                    }
                     social.activityRows = try await social.activity()
                     if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
                     #if DEBUG
@@ -248,7 +257,10 @@ struct LibraryRoot: View {
                 if let rows = try? await social.activity() { social.activityRows = rows }
             }
         }
-        .onChange(of: unreadCount) { _, count in UNUserNotificationCenter.current().setBadgeCount(count) }
+        .onChange(of: unreadCount) { _, count in
+            UNUserNotificationCenter.current().setBadgeCount(count)
+            Task { await PushService.updateBadge(count) }
+        }
         .onChange(of: social.activityRows.map(\.id)) { _, _ in
             #if DEBUG
             // --check-activity runs the background check in the foreground, so what's on screen mustn't count as seen first.
