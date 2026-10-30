@@ -5,7 +5,7 @@ import Observation
 import CryptoKit
 
 @MainActor @Observable final class CloudStore {
-    static let containerID = "iCloud.com.nujoomdigital.wishwell"
+    nonisolated static let containerID = "iCloud.com.nujoomdigital.wishwell"
     var container: ModelContainer?
     var loading = false
     var error: String?
@@ -99,26 +99,51 @@ import CryptoKit
 extension CloudStore {
     /// Development only: creates every record type and field for the SwiftData models in the private database.
     /// Uses a throwaway store, so the personal library is never opened.
-    static func initializeCloudKitSchema() throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "schema-\(UUID().uuidString).store")
-        defer { try? FileManager.default.removeItem(at: url) }
-        try autoreleasepool {
-            let description = NSPersistentStoreDescription(url: url)
-            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerID)
-            description.shouldAddStoreAsynchronously = false
-            guard let model = NSManagedObjectModel.makeManagedObjectModel(for: [WishList.self, Wish.self, LocalProfile.self, SocialReadState.self, HiddenPerson.self]) else {
-                throw WishwellError("The data model couldn't be read.")
-            }
-            let container = NSPersistentCloudKitContainer(name: "Wishwell", managedObjectModel: model)
-            container.persistentStoreDescriptions = [description]
-            var loadError: Error?
-            container.loadPersistentStores { _, error in loadError = error }
-            if let loadError { throw loadError }
-            try container.initializeCloudKitSchema()
-            if let store = container.persistentStoreCoordinator.persistentStores.first {
-                try container.persistentStoreCoordinator.remove(store)
-            }
+    /// Runs off the main thread: the setup waits on CloudKit replies that are delivered there.
+    static func initializeCloudKitSchema() async throws {
+        try await Task.detached(priority: .userInitiated) { try createSchema() }.value
+    }
+    private nonisolated static func createSchema() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "schema-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appending(path: "Wishwell.store")
+        let description = NSPersistentStoreDescription(url: url)
+        description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerID)
+        description.shouldAddStoreAsynchronously = false
+        guard let model = NSManagedObjectModel.makeManagedObjectModel(for: [WishList.self, Wish.self, LocalProfile.self, SocialReadState.self, HiddenPerson.self]) else {
+            throw WishwellError("The data model couldn't be read.")
         }
+        let container = NSPersistentCloudKitContainer(name: "Wishwell", managedObjectModel: model)
+        container.persistentStoreDescriptions = [description]
+        var loadError: Error?
+        container.loadPersistentStores { _, error in loadError = error }
+        if let loadError { throw loadError }
+        // Detach the store before its files go, whether or not the setup worked.
+        defer {
+            for store in container.persistentStoreCoordinator.persistentStores { try? container.persistentStoreCoordinator.remove(store) }
+            try? FileManager.default.removeItem(at: folder)
+        }
+        try container.initializeCloudKitSchema()
+    }
+
+    /// Deletes the placeholder records schema setup leaves in the sync zone when it fails part way.
+    /// Only names starting with CD_FAKE_ are touched. Returns how many were removed.
+    static func removeSchemaPlaceholders() async throws -> Int {
+        let database = CKContainer(identifier: containerID).privateCloudDatabase
+        let zone = CKRecordZone.ID(zoneName: "com.apple.coredata.cloudkit.zone")
+        var placeholders: [CKRecord.ID] = []
+        var token: CKServerChangeToken?
+        var more = true
+        while more {
+            let changes = try await database.recordZoneChanges(inZoneWith: zone, since: token)
+            placeholders += changes.modificationResultsByID.keys.filter { $0.recordName.hasPrefix("CD_FAKE_") }
+            token = changes.changeToken
+            more = changes.moreComing
+        }
+        for batch in stride(from: 0, to: placeholders.count, by: 200) {
+            _ = try await database.modifyRecords(saving: [], deleting: Array(placeholders[batch..<min(batch + 200, placeholders.count)]))
+        }
+        return placeholders.count
     }
 }
 #endif

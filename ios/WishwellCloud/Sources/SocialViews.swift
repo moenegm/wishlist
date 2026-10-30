@@ -25,6 +25,7 @@ extension SocialStore {
 }
 
 /// Push alerts for follows, likes and comments. Asked for when a profile is published, the point where alerts become useful.
+@MainActor
 enum AlertPermission {
     static func request() async {
         let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
@@ -663,9 +664,16 @@ struct LiveSocialCheckView: View {
             #else
             let encoder = JSONEncoder()
             if ProcessInfo.processInfo.arguments.contains("--initialize-cloudkit-schema") {
-                do { try CloudStore.initializeCloudKitSchema() }
-                catch let error as NSError { note("FAIL: \(error.domain) \(error.code) \(error.userInfo)"); return }
+                var failure: NSError?
+                do { try await CloudStore.initializeCloudKitSchema() } catch let error as NSError { failure = error }
+                let removed = try await CloudStore.removeSchemaPlaceholders()
+                note("PASS: removed \(removed) schema placeholder records.")
+                if let failure { note("FAIL: \(failure.domain) \(failure.code) \(failure.userInfo)"); return }
                 note("COMPLETE: private SwiftData record types and fields initialized in development.")
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("--remove-schema-placeholders") {
+                note("COMPLETE: removed \(try await CloudStore.removeSchemaPlaceholders()) schema placeholder records.")
                 return
             }
             let user = try await database.userID()
