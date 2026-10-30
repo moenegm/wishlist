@@ -1,9 +1,21 @@
 import SwiftUI
+import UserNotifications
 import SwiftData
 import CryptoKit
 
 /// Receives the push token CloudKit needs for follow, like and comment alerts.
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+    /// Shows alerts while the app is open too, so a follow, like or comment is never silently dropped.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        #if DEBUG
+        print("Wishwell alerts: received \(notification.request.content.body)")
+        #endif
+        return [.banner, .list, .sound]
+    }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         #if DEBUG
         print("Wishwell alerts: registered for push")

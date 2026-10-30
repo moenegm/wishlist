@@ -679,6 +679,23 @@ struct LiveSocialCheckView: View {
                 note("COMPLETE: private SwiftData record types and fields initialized in development.")
                 return
             }
+            if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--alert-probe") {
+                // Unfiltered comment subscription, to tell a filter problem from a delivery problem.
+                let database = CKContainer(identifier: CloudStore.containerID).publicCloudDatabase
+                let id = "ww-probe-comment"
+                if ProcessInfo.processInfo.arguments.dropFirst(index + 1).first == "off" {
+                    _ = try await database.deleteSubscription(withID: id)
+                    note("COMPLETE: probe subscription removed.")
+                } else {
+                    let probe = CKQuerySubscription(recordType: SocialKind.comment.rawValue, predicate: NSPredicate(value: true), subscriptionID: id, options: .firesOnRecordCreation)
+                    probe.zoneID = CKRecordZone.default().zoneID
+                    let info = CKSubscription.NotificationInfo(); info.alertBody = "Probe: a comment was created."; info.soundName = "default"
+                    probe.notificationInfo = info
+                    _ = try await database.save(probe)
+                    note("COMPLETE: probe subscription saved.")
+                }
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("--remove-schema-placeholders") {
                 note("COMPLETE: removed \(try await CloudStore.removeSchemaPlaceholders()) schema placeholder records.")
                 return
