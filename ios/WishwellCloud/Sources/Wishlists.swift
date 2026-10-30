@@ -237,10 +237,7 @@ struct WishDetail: View {
             .sheet(isPresented: $editing) { if let list = wish.list { WishEditor(list: list, existing: wish) } }
             .confirmationDialog("Delete this wish?", isPresented: $deleting, titleVisibility: .visible) {
                 Button("Delete wish", role: .destructive) {
-                    if !social.isDemo, let record = wish.list?.publicRecordName {
-                        let id = wish.id
-                        Task { await PushService.reportRemoval(list: record, wishes: [id]) }
-                    }
+                    if let list = wish.list { reportWishLeaving(wish.id, from: list, social: social) }
                     context.delete(wish)
                     do { try context.save(); dismiss() } catch { context.rollback(); self.error = error.localizedDescription }
                 }
@@ -301,10 +298,7 @@ struct WishEditor: View {
                 existing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
                 existing.optionsData = try JSONEncoder().encode(validated); existing.updatedAt = Date()
                 // Moving a wish off a shared list counts as removing it there.
-                if target.id != list.id, !social.isDemo, let record = list.publicRecordName {
-                    let id = existing.id
-                    Task { await PushService.reportRemoval(list: record, wishes: [id]) }
-                }
+                if target.id != list.id { reportWishLeaving(existing.id, from: list, social: social) }
                 existing.list = target
             } else {
                 context.insert(try Wish(title: title.trimmingCharacters(in: .whitespacesAndNewlines), options: validated, list: target))

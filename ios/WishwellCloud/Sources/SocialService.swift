@@ -277,15 +277,22 @@ import Observation
     }
     /// Makes a shared list private without deleting it: its contents leave the public database,
     /// while likes and comments stay attached for the owner and return if the list is shared again.
-    func pause(_ id: String) async throws {
+    func pause(_ id: String, wishIDs: [UUID] = []) async throws {
         let user = try await actor()
         guard var row = try await fetch(id) else { return }
         guard row.kind == .list, row.creator == user else { throw WishwellError("You can only change your own wishlist.") }
-        row.payload = try encode(PausedList(paused: true))
+        row.payload = try encode(PausedList(paused: true, wishIDs: wishIDs))
         try await ensureActor(user); _ = try await database.save(row)
         listCache[id] = nil; ownerListCache[user] = nil
         if let source = row.sourceID { pausedRecords[source] = id }
         await refreshAlerts(unpublished: id)
+    }
+    /// Keeps a private list's record in step with which wishes are still on it.
+    func updatePaused(_ id: String, wishIDs: [UUID]) async throws {
+        let user = try await actor()
+        guard var row = try await fetch(id), row.kind == .list, row.creator == user, Self.isPaused(row) else { return }
+        row.payload = try encode(PausedList(paused: true, wishIDs: wishIDs))
+        try await ensureActor(user); _ = try await database.save(row)
     }
     func unpublish(_ id: String) async throws {
         let user = try await actor()

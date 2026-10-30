@@ -557,10 +557,24 @@ extension SocialStore {
             let snapshot = PublicList(list: list, profile: me, id: list.publicRecordName ?? UUID().uuidString)
             list.publicRecordName = try await publish(snapshot, existingID: list.publicRecordName)
         } else {
-            if let id = list.publicRecordName { try await pause(id) }
+            if let id = list.publicRecordName { try await pause(id, wishIDs: (list.wishes ?? []).map(\.id)) }
             list.publicRecordName = nil
         }
         do { try context.save() } catch { context.rollback(); throw error }
+    }
+}
+
+/// Called when a wish leaves one of this person's lists (deleted or moved), so anyone getting it can be told.
+/// A private list's record is kept in step too, since the website can't see the list itself.
+@MainActor func reportWishLeaving(_ wishID: UUID, from list: WishList, social: SocialStore) {
+    guard !social.isDemo, social.enabled, social.me != nil else { return }
+    let known = list.publicRecordName, source = list.id
+    let remaining = (list.wishes ?? []).map(\.id).filter { $0 != wishID }
+    Task {
+        if let known { return await PushService.reportRemoval(list: known, wishes: [wishID]) }
+        guard let record = try? await social.ownListRecord(source: source)?.id else { return }
+        await PushService.reportRemoval(list: record, wishes: [wishID])
+        try? await social.updatePaused(record, wishIDs: remaining)
     }
 }
 

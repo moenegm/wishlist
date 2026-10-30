@@ -314,6 +314,19 @@ final class SocialTests: XCTestCase {
         XCTAssertNil(owner.listCache[id])
     }
 
+    @MainActor func testAPrivateListKeepsOnlyItsWishIDsSoRemovalsCanBeConfirmed() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
+        try await owner.pause(id, wishIDs: [wishID])
+        let paused = try unwrap(database.rows[id]).decode(PausedList.self)
+        expectEqual(paused.wishIDs, [wishID])
+        XCTAssertFalse(String(decoding: try unwrap(database.rows[id]).payload, as: UTF8.self).contains("Chair"))
+        try await owner.updatePaused(id, wishIDs: [])
+        expectEqual(try unwrap(database.rows[id]).decode(PausedList.self).wishIDs, [])
+        expectNil(try await owner.publicList(id))
+    }
+
     @MainActor func testAQuickPrivateThenPublicSwitchFindsTheRecordBeforeTheIndexCatchesUp() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         database.laggingIndex = [:]

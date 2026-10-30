@@ -100,6 +100,9 @@ struct PublicList: Codable, Identifiable, Hashable {
 /// The record stays so likes and comments attached to it survive, but the list itself is no longer shared.
 struct PausedList: Codable {
     var paused: Bool
+    /// Only the IDs of the wishes still on the list, no titles or details, so the website can confirm a wish
+    /// was really removed before telling the person getting it.
+    var wishIDs: [UUID]?
 }
 
 struct SocialAction: Codable {
