@@ -73,7 +73,8 @@ struct CircleView: View {
                     ForEach(people) { person in
                         NavigationLink { PublicPersonView(person: person) } label: { PersonRow(person: person) }
                     }
-                    if !loading && people.isEmpty { Text(group == "discover" && query.isEmpty ? "Search by a first or last name." : "No people to show yet.").foregroundStyle(.secondary) }
+                    if loading && people.isEmpty { ProgressView() }
+                    else if !loading && people.isEmpty { Text(group == "discover" && query.isEmpty ? "Search by a first or last name." : "No people to show yet.").foregroundStyle(.secondary) }
                 }
                 if query.isEmpty && group == "following" {
                     Section("Shared by your circle") {
@@ -82,6 +83,12 @@ struct CircleView: View {
                 }
             }
         }.navigationTitle("Your circle").searchable(text: $query, prompt: "Find people by name")
+            .onChange(of: group, initial: true) { _, value in
+                // Show the last-known people straight away; the fresh list replaces them when it arrives.
+                guard query.isEmpty else { return }
+                people = social.circleCache[value] ?? []
+                lists = value == "following" ? people.flatMap { social.ownerListCache[$0.ownerID] ?? [] } : []
+            }
             .task(id: "\(query):\(group):\(social.me?.id ?? "")") {
                 do { try await Task.sleep(for: .milliseconds(250)); try Task.checkCancellation(); await load() } catch {}
             }.refreshable { await load() }
@@ -98,10 +105,13 @@ struct CircleView: View {
             else { rows = [] }
             try Task.checkCancellation()
             guard term == query.trimmingCharacters(in: .whitespacesAndNewlines), selected == group else { return }
-            people = rows; lists = []
+            people = rows
+            if term.isEmpty { social.circleCache[selected] = rows }
             if term.isEmpty && group == "following" {
-                for person in rows { lists += try await social.lists(owner: person.ownerID) }
-            }
+                var shared: [PublicList] = []
+                for person in rows { shared += try await social.lists(owner: person.ownerID) }
+                lists = shared
+            } else { lists = [] }
             message = nil
         } catch { if !Task.isCancelled { people = []; lists = []; message = error.localizedDescription } }
     }
@@ -122,6 +132,21 @@ struct PublicAvatar: View {
         }.frame(width: 48, height: 48).clipShape(Circle()).accessibilityHidden(true)
     }
 }
+/// A person's profile photo, full size.
+struct PhotoViewer: View {
+    let person: PublicProfile
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let data = person.photo, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit() }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black)
+                .navigationTitle(person.name).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
 struct PublicListRow: View {
     let list: PublicList
     var body: some View {
@@ -142,9 +167,13 @@ struct PublicPersonView: View {
     @State private var message: String?
     @State private var blocking = false
     @State private var reporting = false
+    @State private var viewingPhoto = false
     var body: some View {
         List {
-            Section { PersonRow(person: person) }
+            Section {
+                Button { viewingPhoto = true } label: { PersonRow(person: person) }
+                    .buttonStyle(.plain).disabled(person.photo == nil).accessibilityHint(person.photo == nil ? "" : "Shows the profile photo")
+            }
             if person.ownerID != social.actorID {
                 Button(followed ? "Unfollow" : "Follow", systemImage: followed ? "person.badge.minus" : "person.badge.plus") {
                     // The button flips right away; it only flips back if saving fails.
@@ -169,6 +198,11 @@ struct PublicPersonView: View {
                     } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("social.person.menu")
                 }
             }.sheet(isPresented: $reporting) { ReportView(id: person.id) }
+            .sheet(isPresented: $viewingPhoto) { PhotoViewer(person: person) }
+            .onAppear {
+                if let known = social.followingOwners { followed = known.contains(person.ownerID) }
+                if lists.isEmpty { lists = social.ownerListCache[person.ownerID] ?? [] }
+            }
             .confirmationDialog("Block \(person.name)?", isPresented: $blocking, titleVisibility: .visible) {
                 Button("Block", role: .destructive) {
                     context.insert(HiddenPerson(ownerID: person.ownerID))
@@ -180,8 +214,13 @@ struct PublicPersonView: View {
     }
     private func load() async {
         do {
-            lists = try await social.lists(owner: person.ownerID)
-            followed = try await social.following().contains { $0.ownerID == person.ownerID }; message = nil
+            async let shared = social.lists(owner: person.ownerID)
+            async let follows = social.following()
+            let (newLists, people) = try await (shared, follows)
+            lists = newLists
+            // Don't undo a tap that's still saving.
+            if !social.busy { followed = people.contains { $0.ownerID == person.ownerID } }
+            message = nil
         } catch { lists = []; message = error.localizedDescription }
     }
 }
@@ -195,7 +234,7 @@ struct PublicListView: View {
     @State private var reporting = false
     var body: some View {
         Group {
-            if let list {
+            if let list = list ?? social.listCache[id] {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         Label("Public wishlist", systemImage: "globe").font(.caption).foregroundStyle(Theme.green)
@@ -215,7 +254,7 @@ struct PublicListView: View {
             } else if let message { ContentUnavailableView("Wishlist unavailable", systemImage: "lock", description: Text(message)) }
             else { ProgressView() }
         }.background(Theme.background).navigationTitle("Shared wishlist").navigationBarTitleDisplayMode(.inline)
-            .toolbar { if let list, list.ownerID != social.actorID { Button("Report", systemImage: "flag") { reporting = true }.accessibilityIdentifier("social.list.report") } }
+            .toolbar { if let list = list ?? social.listCache[id], list.ownerID != social.actorID { Button("Report", systemImage: "flag") { reporting = true }.accessibilityIdentifier("social.list.report") } }
             .sheet(isPresented: $reporting) { ReportView(id: id) }
             .task { await load() }.refreshable { await load() }
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
@@ -236,7 +275,7 @@ struct PublicWishView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if let wish {
+                if let wish = wish ?? social.listCache[listID]?.wishes.first(where: { $0.id == wishID }) {
                     Text(wish.title).font(.system(.largeTitle, design: .serif))
                     if wish.fulfilled { Label("Fulfilled", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
                     OptionRows(options: wish.options)
@@ -263,12 +302,21 @@ struct SocialThreadView: View {
     @State private var message: String?
     @State private var deleteID: String?
     @State private var reportID: String?
+    @State private var savingLike = false
     @FocusState private var writing: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Divider()
             Button {
-                Task { await social.perform { try await social.setLike(listID: listID, wishID: wishID, liked: !thread.liked); await load() } }
+                // The heart and count change right away; a failed save puts them back.
+                let wanted = !thread.liked
+                thread.liked = wanted; thread.likeCount += wanted ? 1 : -1
+                savingLike = true
+                Task {
+                    await social.perform { try await social.setLike(listID: listID, wishID: wishID, liked: wanted) }
+                    savingLike = false
+                    await load()
+                }
             } label: { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
                 // Toggling before the thread loads would act on a placeholder state.
                 .disabled(social.busy || social.me == nil || !loaded || thread.paused)
@@ -301,7 +349,10 @@ struct SocialThreadView: View {
                 }
                 Text("\(bodyText.count)/500").font(.caption2).foregroundStyle(.secondary)
             } else { Text("Turn on Public account in Settings to join the conversation.").font(.caption).foregroundStyle(.secondary) }
-        }.task(id: social.refreshRevision) { await load() }
+        }.onAppear {
+            if !loaded, let cached = social.cachedThread(listID: listID, wishID: wishID) { thread = cached; loaded = true }
+        }
+        .task(id: social.refreshRevision) { await load() }
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { writing = false }.accessibilityIdentifier("social.keyboard.done") } }
             .confirmationDialog("Delete your comment?", isPresented: Binding(get: { deleteID != nil }, set: { if !$0 { deleteID = nil } }), titleVisibility: .visible) {
                 Button("Delete comment", role: .destructive) { if let id = deleteID { Task { await social.perform { try await social.deleteComment(id); deleteID = nil; await load() } } } }
@@ -309,8 +360,12 @@ struct SocialThreadView: View {
             .sheet(isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })) { if let id = reportID { ReportView(id: id) } }
     }
     private func load() async {
-        do { thread = try await social.thread(listID: listID, wishID: wishID); message = nil; loaded = true }
-        catch { thread = SocialThread(); message = error.localizedDescription; loaded = false }
+        do {
+            let fresh = try await social.thread(listID: listID, wishID: wishID)
+            // A like that's still saving would otherwise flicker back for a moment.
+            if !savingLike { thread = fresh }
+            message = nil; loaded = true
+        } catch { thread = SocialThread(); message = error.localizedDescription; loaded = false }
     }
 }
 
@@ -395,20 +450,22 @@ struct ActivityView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var phase
     @Query private var readState: [SocialReadState]
-    @State private var rows: [SocialActivity] = []
     @State private var message: String?
+    @State private var loading = false
+    private var rows: [SocialActivity] { social.activityRows }
     var body: some View {
         List {
             if let message { Text(message).foregroundStyle(.secondary) }
-            if rows.isEmpty { ContentUnavailableView("You’re all caught up", systemImage: "bell", description: Text("Follows, likes, comments, and new public wishes from your circle appear here.")) }
+            if rows.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
+            else if rows.isEmpty { ContentUnavailableView("You’re all caught up", systemImage: "bell", description: Text("Follows, likes, comments, and new public wishes from your circle appear here.")) }
             ForEach(rows) { row in
                 Group {
-                    if let list = row.list { NavigationLink { PublicListView(id: list.id).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    if let list = row.list, let wishID = row.wishID { NavigationLink { PublicWishView(listID: list.id, wishID: wishID).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else if let list = row.list { NavigationLink { PublicListView(id: list.id).onAppear { markRead([row]) } } label: { activityRow(row) } }
                     else { NavigationLink { PublicPersonView(person: row.actor).onAppear { markRead([row]) } } label: { activityRow(row) } }
                 }.accessibilityValue(readState.contains { $0.id == row.id } ? "Read" : "Unread")
             }
         }.navigationTitle("Notifications")
-            .onChange(of: social.activityRows.map(\.id)) { _, _ in rows = social.activityRows }
             .toolbar { Button("Mark shown as read") { markRead(rows) }.disabled(rows.isEmpty).accessibilityIdentifier("social.activity.markRead") }
             .task { await load() }.refreshable { await load() }
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
@@ -426,8 +483,9 @@ struct ActivityView: View {
     }
     private func load() async {
         guard social.enabled else { message = "Notifications will be available after CloudKit social setup."; return }
-        do { rows = try await social.activity(); social.activityRows = rows; message = nil }
-        catch { rows = []; message = error.localizedDescription }
+        loading = true; defer { loading = false }
+        do { social.activityRows = try await social.activity(); message = nil }
+        catch { message = error.localizedDescription }
     }
     private func markRead(_ shown: [SocialActivity]) {
         let existing = Set(readState.map(\.id))
@@ -443,6 +501,7 @@ extension SocialStore {
     func setPublic(_ list: WishList, _ on: Bool, context: ModelContext) async throws {
         if on {
             guard let me else { throw WishwellError("Turn on your public account in Settings to share wishlists.") }
+            publishing.insert(list.id); defer { publishing.remove(list.id) }
             let snapshot = PublicList(list: list, profile: me, id: list.publicRecordName ?? UUID().uuidString)
             list.publicRecordName = try await publish(snapshot, existingID: list.publicRecordName)
         } else {

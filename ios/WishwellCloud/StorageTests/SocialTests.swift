@@ -265,6 +265,26 @@ final class SocialTests: XCTestCase {
         expectEqual(try await owner.lists(owner: "owner").map(\.id), [id])
     }
 
+    @MainActor func testWishActivityPointsAtTheWishAndScreensCanShowLastKnownResults() async throws {
+        let (database, owner, privateList, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(privateList.wishes?.first?.id)
+        let friend = try await member(database)
+        try await friend.follow(try unwrap(try await friend.profile(owner: "owner")), enabled: true)
+        expectEqual(friend.followingOwners, nil)
+        _ = try await friend.following()
+        expectEqual(friend.followingOwners, ["owner"])
+        try await friend.comment(listID: id, wishID: wishID, text: "This one!")
+        database.user = "owner"
+        let comment = try unwrap(try await owner.activity().first { $0.message.contains("commented") })
+        expectEqual(comment.wishID, wishID)
+        _ = try await owner.thread(listID: id, wishID: wishID)
+        expectEqual(owner.cachedThread(listID: id, wishID: wishID)?.comments.map(\.text), ["This one!"])
+        XCTAssertNotNil(owner.listCache[id])
+        try await owner.pause(id)
+        XCTAssertNil(owner.listCache[id])
+    }
+
     @MainActor func testAQuickPrivateThenPublicSwitchFindsTheRecordBeforeTheIndexCatchesUp() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         database.laggingIndex = [:]

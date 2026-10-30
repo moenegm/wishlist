@@ -122,6 +122,8 @@ struct SocialActivity: Identifiable {
     var actor: PublicProfile
     var message: String
     var list: PublicList?
+    /// The wish a like or comment was on; nil when it was on the whole list.
+    var wishID: UUID? = nil
     var date: Date
     var icon: String
 }

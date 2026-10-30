@@ -4,7 +4,19 @@ import CloudKit
 @MainActor final class CloudSocialDatabase: SocialDatabase {
     private lazy var container = CKContainer(identifier: "iCloud.com.nujoomdigital.wishwell")
     private var database: CKDatabase { container.publicCloudDatabase }
-    func userID() async throws -> String { try await container.userRecordID().recordName }
+    /// Looking up the signed-in account is a round trip, so it's done once and forgotten when the account changes.
+    private var cachedUser: String?
+    private var accountObserver: NSObjectProtocol?
+    init() {
+        accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.cachedUser = nil }
+        }
+    }
+    func userID() async throws -> String {
+        if let cachedUser { return cachedUser }
+        let user = try await container.userRecordID().recordName
+        cachedUser = user; return user
+    }
 
     private func decode(_ record: CKRecord) async throws -> SocialRow {
         guard let kind = SocialKind(rawValue: record.recordType), let creator = record.creatorUserRecordID?.recordName,

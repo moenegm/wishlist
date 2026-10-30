@@ -23,7 +23,7 @@ struct LibraryView: View {
                         ForEach(lists.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { list in
                             NavigationLink { ListDetail(list: list) } label: {
                                 VStack(alignment: .leading, spacing: 18) {
-                                    HStack { Image(systemName: list.publicRecordName == nil ? "lock" : "globe"); Spacer(); Text(list.category.uppercased()).font(.caption2) }.foregroundStyle(Theme.green)
+                                    HStack { Image(systemName: list.publicRecordName == nil && !social.publishing.contains(list.id) ? "lock" : "globe"); Spacer(); Text(list.category.uppercased()).font(.caption2) }.foregroundStyle(Theme.green)
                                     Text(list.title).font(.system(.title2, design: .serif)).foregroundStyle(.primary)
                                     HStack { Text("\(list.wishes?.count ?? 0) wishes"); Spacer(); Image(systemName: "arrow.up.right") }.font(.subheadline).foregroundStyle(.secondary)
                                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(Theme.sage.opacity(0.6), in: RoundedRectangle(cornerRadius: 24))
@@ -90,7 +90,8 @@ struct ListDetail: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text(list.title).font(.system(.largeTitle, design: .serif))
-                PublicSwitch(isOn: Binding(get: { switching ?? (list.publicRecordName != nil) }, set: { setPublic($0) }), working: switching != nil)
+                PublicSwitch(isOn: Binding(get: { switching ?? (social.publishing.contains(list.id) || list.publicRecordName != nil) }, set: { setPublic($0) }),
+                             working: switching != nil || social.publishing.contains(list.id))
                     .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
                 if let message = social.publicationMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 Toggle("Show fulfilled wishes", isOn: $showFulfilled)
@@ -238,7 +239,7 @@ struct WishEditor: View {
                 Section {
                     ForEach($options) { $option in
                         HStack(spacing: 12) {
-                            TextField("Link or store", text: $option.location).focused($focused, equals: "location-\(option.id)").textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).accessibilityIdentifier("option.location.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
+                            TextField("Link or store", text: $option.location).focused($focused, equals: "location-\(option.id)").textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("option.location.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
                             Divider()
                             TextField("Price", text: $option.price).focused($focused, equals: "price-\(option.id)").keyboardType(.decimalPad).frame(width: 80).accessibilityIdentifier("option.price.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
                             if options.count > 1 { Button("Remove option", systemImage: "minus.circle.fill") { options.removeAll { $0.id == option.id } }.labelStyle(.iconOnly).foregroundStyle(.red).buttonStyle(.borderless) }
