@@ -35,6 +35,41 @@ final class WishwellUITests: XCTestCase {
         let circleShot = XCTAttachment(screenshot: app.screenshot()); circleShot.name = "Someone else is getting it"; circleShot.lifetime = .keepAlways; add(circleShot)
     }
 
+    /// App Store screenshots from demo mode. Opt in with TEST_RUNNER_WISHWELL_SCREENSHOTS=1.
+    @MainActor func testAppStoreScreenshots() throws {
+        guard ProcessInfo.processInfo.environment["WISHWELL_SCREENSHOTS"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_SCREENSHOTS=1 to take App Store screenshots.") }
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication(); app.launchArguments = ["--social-preview", "--sample-lists"]; app.launch()
+        func shot(_ name: String) {
+            sleep(1)
+            let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image)
+        }
+        XCTAssertTrue(labelled(app, "Birthday").waitForExistence(timeout: 20))
+        shot("1-my-lists")
+        tapLabel(app, "Birthday")
+        XCTAssertTrue(app.switches["list.public"].waitForExistence(timeout: 10))
+        shot("2-your-list")
+        openArea(app, "Circle")
+        XCTAssertTrue(app.buttons.matching(identifier: "circle.person").firstMatch.waitForExistence(timeout: 10))
+        shot("3-circle")
+        app.buttons.matching(identifier: "circle.person").matching(NSPredicate(format: "label CONTAINS %@", "Layla")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["social.inCircle"].waitForExistence(timeout: 10))
+        shot("4-person")
+        tapLabel(app, "Birthday", timeout: 10)
+        XCTAssertTrue(labelled(app, "Omar Saleh is getting this").waitForExistence(timeout: 10))
+        shot("5-their-list")
+        tapLabel(app, "Pottery class for two", timeout: 10)
+        XCTAssertTrue(app.buttons["claim.get"].waitForExistence(timeout: 10))
+        shot("6-getting-this")
+        app.buttons["claim.get"].tap()
+        XCTAssertTrue(app.buttons["claim.undo"].waitForExistence(timeout: 10))
+        shot("7-you-are-getting-it")
+        openArea(app, "Notifications")
+        XCTAssertTrue(labelled(app, " added ").waitForExistence(timeout: 10))
+        shot("8-notifications")
+    }
+
     @MainActor func testPrivateListPublishAndUnpublishInSocialPreview() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--social-preview"]; app.launch()

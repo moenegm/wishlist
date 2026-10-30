@@ -13,7 +13,7 @@ struct LibraryView: View {
                 Text("A LITTLE ROOM FOR WHAT YOU LOVE").font(.caption.weight(.semibold)).tracking(1.5).foregroundStyle(Theme.green)
                 Text("Keep a little\nwonder close.").font(.system(size: 38, design: .serif))
                 Text("Big dreams, small joys, and everything in between.").foregroundStyle(.secondary)
-                if cloud.localOnly { Label("On-device library", systemImage: "iphone").font(.caption).foregroundStyle(.secondary) }
+                if cloud.localOnly && !social.isDemo { Label("On-device library", systemImage: "iphone").font(.caption).foregroundStyle(.secondary) }
                 if let message = social.publicationMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 if lists.isEmpty {
                     ContentUnavailableView("Your first wish starts here", systemImage: "sparkles", description: Text("Create a wishlist to collect the things you’re hoping for."))
@@ -25,7 +25,7 @@ struct LibraryView: View {
                                 VStack(alignment: .leading, spacing: 18) {
                                     HStack { Image(systemName: list.publicRecordName == nil && !social.publishing.contains(list.id) ? "lock" : "globe"); Spacer(); Text(list.category.uppercased()).font(.caption2) }.foregroundStyle(Theme.green)
                                     Text(list.title).font(.system(.title2, design: .serif)).foregroundStyle(.primary)
-                                    HStack { Text("\(list.wishes?.count ?? 0) wishes"); Spacer(); Image(systemName: "arrow.up.right") }.font(.subheadline).foregroundStyle(.secondary)
+                                    HStack { Text((list.wishes?.count ?? 0) == 1 ? "1 wish" : "\(list.wishes?.count ?? 0) wishes"); Spacer(); Image(systemName: "arrow.up.right") }.font(.subheadline).foregroundStyle(.secondary)
                                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(Theme.sage.opacity(0.6), in: RoundedRectangle(cornerRadius: 24))
                             }.buttonStyle(.plain)
                         }

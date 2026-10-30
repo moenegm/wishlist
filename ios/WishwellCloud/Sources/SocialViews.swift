@@ -212,7 +212,7 @@ struct PublicListRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(list.title).font(.system(.title3, design: .serif))
-            Label("\(list.wishes.count) wishes", systemImage: "globe").font(.caption).foregroundStyle(.secondary)
+            Label(list.wishes.count == 1 ? "1 wish" : "\(list.wishes.count) wishes", systemImage: "globe").font(.caption).foregroundStyle(.secondary)
         }.padding(.vertical, 4)
     }
 }

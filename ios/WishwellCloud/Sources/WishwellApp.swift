@@ -253,11 +253,15 @@ struct LibraryRoot: View {
                     await showDeliveredNotifications()
                     try await social.connect()
                     Task { await social.warmCircle() }
-                    if social.me != nil, let user = social.actorID {
+                    // Demo mode must never register the phone under its made-up account.
+                    if !social.isDemo, social.me != nil, let user = social.actorID {
                         await PushService.register(user: user)
                         // The icon may still show notifications already read on another device.
                         await PushService.updateBadge(unreadCount)
                     }
+                    #if DEBUG
+                    if social.isDemo && ProcessInfo.processInfo.arguments.contains("--sample-lists") { await addSampleLists() }
+                    #endif
                     social.activityRows = try await social.activity()
                     if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
                     #if DEBUG
@@ -303,6 +307,33 @@ struct LibraryRoot: View {
         .alert("Wishwell", isPresented: Binding(get: { social.error != nil }, set: { if !$0 { social.error = nil } })) { Button("OK") { social.error = nil } } message: { Text(social.error ?? "") }
     }
     #if DEBUG
+    /// Development only: fills the demo library with a few lists, for App Store screenshots.
+    private func addSampleLists() async {
+        guard lists.isEmpty else { return }
+        let samples: [(String, String, Bool, [(String, [(String, String)], Bool)])] = [
+            ("Birthday", "Celebrations", true, [
+                ("Film camera", [("https://www.bhphotovideo.com/c/search?q=film+camera", "289"), ("Local camera shop", "310")], false),
+                ("Linen pajamas", [("etsy.com/search?q=linen+pajamas", "75")], false),
+                ("Concert tickets for two", [("https://www.ticketmaster.com", "180")], false),
+                ("Leather journal", [("Stationery store", "38")], true)]),
+            ("Our home", "Home", false, [
+                ("Ceramic table lamp", [("https://www.westelm.com", "149")], false),
+                ("Wool rug", [("https://www.rugsusa.com", "240"), ("https://www.wayfair.com", "225")], false)]),
+            ("To read", "Books", false, [
+                ("The Hobbit, illustrated edition", [("https://bookshop.org", "35")], false)]),
+        ]
+        for (title, category, makePublic, wishes) in samples {
+            let list = WishList(title: title, category: category)
+            context.insert(list)
+            for (wish, options, fulfilled) in wishes {
+                if let item = try? Wish(title: wish, options: options.map { ShoppingOption(location: $0.0, price: $0.1) }, list: list) {
+                    item.fulfilled = fulfilled; context.insert(item)
+                }
+            }
+            try? context.save()
+            if makePublic { try? await social.setPublic(list, true, context: context) }
+        }
+    }
     /// Development only: prints what iCloud holds for this person's lists, to compare with what the screens show.
     private func dumpSocial() async {
         func line(_ text: String) { print("WISHWELL_DUMP: \(text)") }
