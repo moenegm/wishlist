@@ -27,7 +27,8 @@ import CloudKit
         return SocialRow(id: record.recordID.recordName, kind: kind, creator: author,
             parent: (record["parent"] as? CKRecord.Reference)?.recordID.recordName,
             sourceID: record["sourceID"] as? String, searchTokens: record["searchTokens"] as? [String] ?? [],
-            payload: payload, createdAt: record.creationDate ?? Date(), systemFields: archiver.encodedData)
+            payload: payload, createdAt: record.creationDate ?? Date(), modifiedAt: record.modificationDate ?? record.creationDate ?? Date(),
+            systemFields: archiver.encodedData)
     }
     func record(_ id: String) async throws -> SocialRow? {
         do { return try await decode(database.record(for: CKRecord.ID(recordName: id))) }
@@ -74,7 +75,8 @@ import CloudKit
     func subscribeAlert(_ alert: SocialAlert) async throws {
         let parent = CKRecord.Reference(recordID: CKRecord.ID(recordName: alert.parent), action: .none)
         let subscription = CKQuerySubscription(recordType: alert.kind.rawValue, predicate: NSPredicate(format: "parent == %@", parent),
-                                               subscriptionID: alert.id, options: .firesOnRecordCreation)
+                                               // Undoing a gift claim updates its record, so the owner hears about that too.
+                                               subscriptionID: alert.id, options: alert.kind == .claim ? [.firesOnRecordCreation, .firesOnRecordUpdate] : .firesOnRecordCreation)
         // Public records live in the default zone.
         subscription.zoneID = CKRecordZone.default().zoneID
         let info = CKSubscription.NotificationInfo()

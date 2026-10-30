@@ -2,7 +2,9 @@ import Foundation
 import SwiftData
 
 enum SocialKind: String, Codable, CaseIterable {
-    case profile = "WWProfile", list = "WWList", follow = "WWFollow", like = "WWLike", comment = "WWComment", report = "WWReport"
+    // Gift claims live in the WWLike record type, which already has its permissions set up; likes are no longer used.
+    // WWComment stays only so leftover comments are removed with a public profile.
+    case profile = "WWProfile", list = "WWList", follow = "WWFollow", claim = "WWLike", comment = "WWComment", report = "WWReport"
 }
 
 struct SocialRow: Identifiable {
@@ -14,6 +16,7 @@ struct SocialRow: Identifiable {
     var searchTokens: [String] = []
     var payload: Data
     var createdAt: Date = Date()
+    var modifiedAt: Date = Date()
     var systemFields: Data?
     func decode<T: Decodable>(_ type: T.Type = T.self) throws -> T { try JSONDecoder().decode(type, from: payload) }
 }
@@ -46,9 +49,8 @@ struct SocialAlert: Hashable {
     var id: String { "\(Self.prefix)\(kind.rawValue)-\(parent)" }
     var message: String {
         switch kind {
-        case .follow: "Someone followed you on Wishwell."
-        case .like: "Someone liked your wishlist."
-        default: "Someone commented on your wishlist."
+        case .follow: "Someone added you to their circle on Wishwell."
+        default: "Someone might be getting one of your wishes."
         }
     }
 }
@@ -104,27 +106,22 @@ struct SocialAction: Codable {
     var wishID: UUID?
     var text: String = ""
 }
-struct SocialComment: Identifiable {
-    var id: String
-    var author: PublicProfile
-    var text: String
-    var createdAt: Date
-    /// Shown straight away while it's still being saved.
-    var sending = false
+/// Someone marking a wish as one they're getting. Old likes in the same record type have no `active` field, so they never decode as claims.
+struct GiftClaim: Codable {
+    var wishID: UUID
+    var active: Bool
 }
-struct SocialThread {
-    /// True when the list is private: the owner can read what was said, but nobody can like or comment.
-    var paused = false
-    var liked = false
-    var likeCount = 0
-    var comments: [SocialComment] = []
-    /// For the list-level thread: how many people liked, and how many comments, each wish has.
-    var wishLikes: [UUID: Int] = [:]
-    var wishComments: [UUID: Int] = [:]
+enum ClaimState: Equatable {
+    case mine
+    /// Another person, by name; only people other than the wish's owner see this.
+    case other(String)
+    /// What the owner sees: someone is, but not who.
+    case someone
 }
 struct SocialActivity: Identifiable {
     var id: String
-    var actor: PublicProfile
+    /// Nil when the person is kept private, as with gift claims.
+    var actor: PublicProfile?
     var message: String
     var list: PublicList?
     /// The wish a like or comment was on; nil when it was on the whole list.

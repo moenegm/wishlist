@@ -175,7 +175,9 @@ struct LibraryRoot: View {
             if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
                 do {
-                    try await social.connect(); social.activityRows = try await social.activity()
+                    try await social.connect()
+                    Task { await social.warmCircle() }
+                    social.activityRows = try await social.activity()
                     if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--dump-social") { await dumpSocial() }
@@ -225,12 +227,8 @@ struct LibraryRoot: View {
             line("list '\(list.title)' local=\(list.id) record=\(record ?? "none") public=\(list.publicRecordName != nil)")
             guard let record else { continue }
             do {
-                let whole = try await social.thread(listID: record, wishID: nil)
-                line("  list-level: likes=\(whole.likeCount) comments=\(whole.comments.map(\.text)) paused=\(whole.paused)")
-                for wish in list.sortedWishes {
-                    let thread = try await social.thread(listID: record, wishID: wish.id)
-                    line("  wish '\(wish.title)' \(wish.id): likes=\(thread.likeCount) comments=\(thread.comments.map(\.text)) counts=\(whole.wishLikes[wish.id] ?? 0)/\(whole.wishComments[wish.id] ?? 0)")
-                }
+                let claims = try await social.claims(listID: record)
+                for wish in list.sortedWishes { line("  wish '\(wish.title)' \(wish.id): claim=\(claims[wish.id].map { "\($0)" } ?? "none")") }
             } catch { line("  error: \(error)") }
         }
         line("activity: \(social.activityRows.map(\.message))")

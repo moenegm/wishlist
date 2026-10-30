@@ -20,7 +20,7 @@ import Observation
     private var pausedRecords: [String: String] = [:]
     /// Last-known results, shown straight away while a fresh copy loads, so screens don't start empty.
     var followingOwners: Set<String>?
-    var threadCache: [String: SocialThread] = [:]
+    var claimCache: [String: [UUID: ClaimState]] = [:]
     var listCache: [String: PublicList] = [:]
     var ownerListCache: [String: [PublicList]] = [:]
     var circleCache: [String: [PublicProfile]] = [:]
@@ -32,6 +32,44 @@ import Observation
     private var epoch = UUID()
     init(database: (any SocialDatabase)? = nil, enabled: Bool = Bundle.main.object(forInfoDictionaryKey: "WishwellSocialEnabled") as? Bool ?? false) {
         self.database = database ?? CloudSocialDatabase(); self.enabled = enabled
+        // The app opens with the circle it saw last time; tests start empty.
+        if database == nil && enabled { restoreSnapshot() }
+    }
+
+    /// What's kept on the phone so the circle and people's lists show instantly, before iCloud answers.
+    private struct Snapshot: Codable {
+        var actor: String
+        var me: PublicProfile?
+        var circle: [PublicProfile]
+        var lists: [String: [PublicList]]
+    }
+    private var snapshotActor: String?
+    private static var snapshotURL: URL { URL.applicationSupportDirectory.appending(path: "WishwellCircle.json") }
+    private func restoreSnapshot() {
+        guard let data = try? Data(contentsOf: Self.snapshotURL), let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
+        snapshotActor = snapshot.actor
+        me = snapshot.me
+        circleCache["following"] = snapshot.circle
+        followingOwners = Set(snapshot.circle.map(\.ownerID))
+        ownerListCache = snapshot.lists
+        for list in snapshot.lists.values.flatMap({ $0 }) { listCache[list.id] = list }
+    }
+    private func saveSnapshot() {
+        guard let actorID else { return }
+        let circle = circleCache["following"] ?? []
+        let owners = Set(circle.map(\.ownerID))
+        let snapshot = Snapshot(actor: actorID, me: me, circle: circle, lists: ownerListCache.filter { owners.contains($0.key) })
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        try? FileManager.default.createDirectory(at: Self.snapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: Self.snapshotURL, options: [.atomic, .completeFileProtection])
+    }
+    /// Refreshes the circle and everyone's lists in the background, so they're ready before they're opened.
+    func warmCircle() async {
+        guard let people = try? await following() else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for person in people { group.addTask { @MainActor in _ = try? await self.lists(owner: person.ownerID) } }
+        }
+        saveSnapshot()
     }
     func connect() async throws {
         guard enabled else { throw WishwellError("Social sharing is awaiting CloudKit permission setup. Your private library is ready to use.") }
@@ -39,6 +77,12 @@ import Observation
         let user = try await database.userID()
         guard attempt == epoch else { throw CancellationError() }
         actorID = user
+        // A different account never sees the previous one's saved circle.
+        if let snapshotActor, snapshotActor != user {
+            circleCache = [:]; ownerListCache = [:]; listCache = [:]; followingOwners = nil; me = nil
+            try? FileManager.default.removeItem(at: Self.snapshotURL)
+        }
+        snapshotActor = user
         me = try await profile(owner: user)
         await refreshAlerts()
     }
@@ -53,7 +97,7 @@ import Observation
             var lists = Set(try await fetchRows(SocialQuery(kind: .list, creator: user)).filter { $0.creator == user && !Self.isPaused($0) }.map(\.id))
             if let published { lists.insert(published) }
             if let unpublished { lists.remove(unpublished) }
-            for id in lists { wanted.insert(SocialAlert(kind: .like, parent: id)); wanted.insert(SocialAlert(kind: .comment, parent: id)) }
+            for id in lists { wanted.insert(SocialAlert(kind: .claim, parent: id)) }
         }
         let existing = try await database.alertSubscriptionIDs().filter { $0.hasPrefix(SocialAlert.prefix) }
         for id in existing.subtracting(wanted.map(\.id)) { try await database.unsubscribeAlert(id) }
@@ -228,7 +272,10 @@ import Observation
             result.append(try profileValue(target))
         }
         followingOwners = seen
-        return result.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let sorted = result.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        circleCache["following"] = sorted
+        saveSnapshot()
+        return sorted
     }
     func followers(of person: PublicProfile) async throws -> [PublicProfile] {
         guard let target = try await fetch(person.id), target.kind == .profile, target.creator == person.ownerID else { return [] }
@@ -258,93 +305,63 @@ import Observation
             followingOwners?.remove(person.ownerID)
         }
     }
-    func thread(listID: String, wishID: UUID?) async throws -> SocialThread {
-        let user = try await actor()
-        // The owner of a private list can still read what was said on it.
-        let key = "\(listID)|\(wishID?.uuidString ?? "list")"
-        if let row = try await fetch(listID), row.kind == .list, row.creator == user, Self.isPaused(row) {
-            var thread = try await collectThread(listID: listID, wishID: wishID, user: user)
-            thread.paused = true; thread.liked = false
-            threadCache[key] = thread
-            return thread
-        }
-        guard let list = try await publicList(listID), list.contains(wishID) else { threadCache[key] = nil; throw WishwellError("This shared wish is no longer available.") }
-        let thread = try await collectThread(listID: listID, wishID: wishID, user: user)
-        threadCache[key] = thread
-        return thread
-    }
-    func cachedThread(listID: String, wishID: UUID?) -> SocialThread? { threadCache["\(listID)|\(wishID?.uuidString ?? "list")"] }
-    private func collectThread(listID: String, wishID: UUID?, user: String) async throws -> SocialThread {
-        async let likeRows = fetchRows(SocialQuery(kind: .like, parent: listID))
-        async let commentRows = fetchRows(SocialQuery(kind: .comment, parent: listID))
-        let likes = try await likeRows, comments = try await commentRows
-        let validLikes = likes.filter {
-            guard $0.parent == listID, !hidden.contains($0.creator) else { return false }
-            guard let action = try? $0.decode(SocialAction.self) else { return false }
-            return action.wishID == wishID
-        }
-        var thread = SocialThread(liked: validLikes.contains { $0.creator == user }, likeCount: Set(validLikes.map(\.creator)).count)
-        if wishID == nil {
-            // The same download already holds every wish's likes and comments, so their counts come free.
-            var likers: [UUID: Set<String>] = [:]
-            for row in likes where row.parent == listID && !hidden.contains(row.creator) {
-                if let wish = (try? row.decode(SocialAction.self))?.wishID { likers[wish, default: []].insert(row.creator) }
-            }
-            thread.wishLikes = likers.mapValues(\.count)
-            for row in comments where row.parent == listID && !hidden.contains(row.creator) {
-                if let wish = (try? row.decode(SocialAction.self))?.wishID { thread.wishComments[wish, default: 0] += 1 }
-            }
-        }
-        let written = comments.compactMap { row -> (SocialRow, SocialAction)? in
-            guard row.parent == listID, !hidden.contains(row.creator), let action: SocialAction = try? row.decode(),
-                  action.wishID == wishID, !action.text.isEmpty, action.text.count <= 500 else { return nil }
-            return (row, action)
-        }
-        let authors = await profiles(Set(written.map(\.0.creator)))
-        for (row, action) in written {
-            if let author = authors[row.creator] { thread.comments.append(SocialComment(id: row.id, author: author, text: action.text, createdAt: row.createdAt)) }
-        }
-        thread.comments.sort { $0.createdAt < $1.createdAt }
-        return thread
-    }
-    /// A quicker check than `publicList` for likes and comments: one read of the list record, without the owner's profile.
+    /// A quicker check than `publicList` for claims: one read of the list record, without the owner's profile.
     private func sharedList(_ id: String) async throws -> PublicList? {
         guard let row = try await fetch(id), row.kind == .list, !Self.isPaused(row), !hidden.contains(row.creator),
               var list: PublicList = try? row.decode() else { return nil }
         list.id = row.id; list.ownerID = row.creator
         return list
     }
-    func setLike(listID: String, wishID: UUID?, liked: Bool) async throws {
+    private func claimRows(_ listID: String) async throws -> [(row: SocialRow, claim: GiftClaim)] {
+        try await fetchRows(SocialQuery(kind: .claim, parent: listID)).compactMap { row in
+            guard row.parent == listID, let claim = try? row.decode(GiftClaim.self) else { return nil }
+            return (row, claim)
+        }
+    }
+    /// Who is getting which wish on a list. The list's owner only learns that someone is, never who.
+    func claims(listID: String) async throws -> [UUID: ClaimState] {
         let user = try await actor()
-        // The list check and the search for this person's earlier like run side by side.
+        let rows = try await claimRows(listID)
+        let owner = try await fetch(listID)?.creator
+        var states: [UUID: ClaimState] = [:]
+        let active = rows.filter { $0.claim.active && !hidden.contains($0.row.creator) }
+        let names = owner == user ? [:] : await profiles(Set(active.map(\.row.creator)))
+        for (row, claim) in active.sorted(by: { $0.row.modifiedAt < $1.row.modifiedAt }) where states[claim.wishID] == nil {
+            if row.creator == user { states[claim.wishID] = .mine }
+            else if owner == user { states[claim.wishID] = .someone }
+            else { states[claim.wishID] = .other(names[row.creator]?.name ?? "Someone") }
+        }
+        claimCache[listID] = states
+        return states
+    }
+    /// Marks a wish as one this person is getting, or lets it go again.
+    func setClaim(listID: String, wishID: UUID, on: Bool) async throws {
+        let user = try await actor()
         async let current = sharedList(listID)
-        async let earlier = fetchRows(SocialQuery(kind: .like, creator: user, parent: listID))
-        guard me != nil, let list = try await current, list.contains(wishID) else { throw WishwellError("Turn on your public account and open an available public wish first.") }
-        let rows = try await earlier
-        let own = rows.filter {
-            guard $0.creator == user, $0.parent == listID else { return false }
-            guard let action = try? $0.decode(SocialAction.self) else { return false }
-            return action.wishID == wishID
+        async let existing = claimRows(listID)
+        guard me != nil, let list = try await current, list.contains(wishID) else { throw WishwellError("This wish is no longer shared.") }
+        guard list.ownerID != user else { throw WishwellError("You can’t get your own wish.") }
+        let rows = try await existing.filter { $0.claim.wishID == wishID }
+        if on, rows.contains(where: { $0.claim.active && $0.row.creator != user && !hidden.contains($0.row.creator) }) {
+            throw WishwellError("Someone is already getting this.")
         }
         try await ensureActor(user)
-        if liked {
-            if own.isEmpty { _ = try await database.save(SocialRow(kind: .like, parent: listID, payload: encode(SocialAction(wishID: wishID)))) }
-        } else { for row in own { try await database.delete(row) } }
-    }
-    @discardableResult
-    func comment(listID: String, wishID: UUID?, text: String) async throws -> SocialComment {
-        let user = try await actor(); let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= 500 else { throw WishwellError("Comments must have 1–500 characters.") }
-        guard let me, let list = try await sharedList(listID), list.contains(wishID) else { throw WishwellError("This shared wish is no longer available.") }
-        try await ensureActor(user)
-        let saved = try await database.save(SocialRow(kind: .comment, parent: listID, payload: encode(SocialAction(wishID: wishID, text: text))))
-        return SocialComment(id: saved.id, author: me, text: text, createdAt: saved.createdAt)
-    }
-    func deleteComment(_ id: String) async throws {
-        let user = try await actor()
-        guard let row = try await fetch(id) else { return }
-        guard row.kind == .comment, row.creator == user else { throw WishwellError("You can only delete your own comments.") }
-        try await ensureActor(user); try await database.delete(row)
+        // One record per person and wish: undoing keeps it, marked inactive, so the owner can be told it's open again.
+        let own = rows.filter { $0.row.creator == user }.map(\.row)
+        if on, var first = own.first {
+            first.payload = try encode(GiftClaim(wishID: wishID, active: true))
+            _ = try await database.save(first)
+        } else if !on {
+            for var row in own where (try? row.decode(GiftClaim.self))?.active == true {
+                row.payload = try encode(GiftClaim(wishID: wishID, active: false))
+                _ = try await database.save(row)
+            }
+        } else {
+            _ = try await database.save(SocialRow(kind: .claim, parent: listID, payload: encode(GiftClaim(wishID: wishID, active: true))))
+        }
+        var states = claimCache[listID] ?? [:]
+        states[wishID] = on ? .mine : nil
+        claimCache[listID] = states
     }
     func report(_ id: String, reason: String) async throws {
         let user = try await actor()
@@ -357,7 +374,7 @@ import Observation
     func removeProfile() async throws {
         let user = try await actor()
         let profiles = try await fetchRows(SocialQuery(kind: .profile, creator: user))
-        for kind in [SocialKind.like, .comment, .follow] {
+        for kind in [SocialKind.claim, .comment, .follow] {
             let rows = try await fetchRows(SocialQuery(kind: kind, creator: user))
             for row in rows where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         }
@@ -365,6 +382,8 @@ import Observation
         for row in lists where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         for row in profiles where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         me = nil
+        circleCache = [:]; ownerListCache = [:]; followingOwners = nil
+        try? FileManager.default.removeItem(at: Self.snapshotURL)
         await refreshAlerts()
     }
     func activity() async throws -> [SocialActivity] {
@@ -375,25 +394,19 @@ import Observation
         for own in profiles where own.creator == user {
             for row in try await fetchRows(SocialQuery(kind: .follow, parent: own.id)) where row.parent == own.id && row.creator != user {
                 if seen.insert("follow-\(row.creator)").inserted, let author = try await profile(owner: row.creator) {
-                    activity.append(SocialActivity(id: row.id, actor: author, message: "\(author.name) followed you", date: row.createdAt, icon: "person.badge.plus"))
+                    activity.append(SocialActivity(id: row.id, actor: author, message: "\(author.name) added you to their circle", date: row.createdAt, icon: "person.badge.plus"))
                 }
             }
         }
         for own in try await fetchRows(SocialQuery(kind: .list, creator: user)) where own.creator == user {
             guard let current = try await publicList(own.id) else { continue }
-            async let likeRows = fetchRows(SocialQuery(kind: .like, parent: own.id))
-            async let commentRows = fetchRows(SocialQuery(kind: .comment, parent: own.id))
-            let byKind: [(SocialKind, [SocialRow])] = [(.like, try await likeRows), (.comment, try await commentRows)]
-            for (kind, rows) in byKind {
-                for row in rows where row.parent == own.id && row.creator != user && !hidden.contains(row.creator) {
-                    guard let action: SocialAction = try? row.decode() else { continue }
-                    guard current.contains(action.wishID), let author = try await profile(owner: row.creator) else { continue }
-                    let wishTitle = action.wishID.flatMap { id in current.wishes.first { $0.id == id }?.title }
-                    let target = wishTitle.map { "your wish \($0)" } ?? "your list \(current.title)"
-                    let key = kind == .like ? "like-\(row.creator)-\(own.id)-\(action.wishID?.uuidString ?? "list")" : row.id
-                    guard seen.insert(key).inserted else { continue }
-                    activity.append(SocialActivity(id: row.id, actor: author, message: "\(author.name) \(kind == .like ? "liked" : "commented on") \(target)", list: current, wishID: action.wishID, date: row.createdAt, icon: kind == .like ? "heart.fill" : "bubble.left"))
-                }
+            for (row, claim) in try await claimRows(own.id) where row.creator != user && !hidden.contains(row.creator) {
+                guard let wish = current.wishes.first(where: { $0.id == claim.wishID }) else { continue }
+                // Each change gets its own ID, so "getting" and "open again" both reach the owner.
+                let id = "claim-\(row.id)-\(claim.active ? "on" : "off")-\(Int(row.modifiedAt.timeIntervalSince1970))"
+                activity.append(SocialActivity(id: id, actor: nil,
+                    message: claim.active ? "Someone might be getting your wish \(wish.title)" : "\(wish.title) is open again",
+                    list: current, wishID: wish.id, date: row.modifiedAt, icon: claim.active ? "gift.fill" : "gift"))
             }
         }
         let follows = try await fetchRows(SocialQuery(kind: .follow, creator: user))

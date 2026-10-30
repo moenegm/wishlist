@@ -44,76 +44,63 @@ enum AlertPermission {
     }
 }
 
+/// The people you've added, as a grid of photos. Tap someone to see their wishlists.
 struct CircleView: View {
     @Environment(SocialStore.self) private var social
     @Environment(CloudStore.self) private var cloud
     @State private var query = ""
-    @State private var group = "following"
-    @State private var people: [PublicProfile] = []
-    @State private var lists: [PublicList] = []
-    @State private var loading = false
+    @State private var results: [PublicProfile] = []
+    @State private var searching = false
     @State private var message: String?
+    private var people: [PublicProfile] { social.circleCache["following"] ?? [] }
     var body: some View {
-        List {
-            if social.isDemo { Text("Social simulator preview · No data leaves this device").font(.caption).foregroundStyle(.secondary) }
-            if social.isLiveTest { Text("Live social test · Development CloudKit\(cloud.localOnly ? " with a separate test library" : "")").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.liveTestBanner") }
-            if !social.enabled {
-                ContentUnavailableView("Your circle is being prepared", systemImage: "person.2", description: Text("CloudKit’s social permissions need to be configured before publishing. Your private library is ready to use."))
-            } else if social.me == nil {
-                ContentUnavailableView("Let your friends find you", systemImage: "person.crop.circle.badge.plus", description: Text("Turn on Public account in Settings to find people, follow them, and share wishlists. Each wishlist stays private until you make it public."))
-            } else {
-                Section {
-                    Picker("Your circle", selection: $group) {
-                        Text("Following").tag("following"); Text("Followers").tag("followers"); Text("Discover").tag("discover")
-                    }.pickerStyle(.segmented)
-                }
-                if loading { ProgressView() }
-                if let message { Text(message).foregroundStyle(.secondary) }
-                Section(query.isEmpty ? "Your people" : "Search results") {
-                    ForEach(people) { person in
-                        NavigationLink { PublicPersonView(person: person) } label: { PersonRow(person: person) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if social.isLiveTest { Text("Live social test · Development CloudKit\(cloud.localOnly ? " with a separate test library" : "")").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.liveTestBanner") }
+                if !social.enabled {
+                    ContentUnavailableView("Your circle is being prepared", systemImage: "person.2", description: Text("Your private library is ready to use."))
+                } else if social.me == nil {
+                    ContentUnavailableView("Let your people find you", systemImage: "person.crop.circle.badge.plus", description: Text("Turn on Public account in Settings to add people to your circle and see their wishlists."))
+                } else if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if searching && results.isEmpty { ProgressView().frame(maxWidth: .infinity) }
+                    else if results.isEmpty { Text("No one by that name yet.").foregroundStyle(.secondary) }
+                    ForEach(results) { person in
+                        NavigationLink { PublicPersonView(person: person) } label: {
+                            HStack(spacing: 14) { PublicAvatar(person: person, size: 52); Text(person.name).foregroundStyle(.primary); Spacer()
+                                if social.followingOwners?.contains(person.ownerID) == true { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.green) } }
+                        }.buttonStyle(.plain)
                     }
-                    if loading && people.isEmpty { ProgressView() }
-                    else if !loading && people.isEmpty { Text(group == "discover" && query.isEmpty ? "Search by a first or last name." : "No people to show yet.").foregroundStyle(.secondary) }
-                }
-                if query.isEmpty && group == "following" {
-                    Section("Shared by your circle") {
-                        ForEach(lists) { list in NavigationLink { PublicListView(id: list.id) } label: { PublicListRow(list: list) } }
+                } else if people.isEmpty {
+                    ContentUnavailableView("Your circle is empty", systemImage: "person.2", description: Text("Search for someone by name to add them. Then you can see their wishlists whenever you’re looking for a gift."))
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 18)], spacing: 22) {
+                        ForEach(people) { person in
+                            NavigationLink { PublicPersonView(person: person) } label: {
+                                VStack(spacing: 8) {
+                                    PublicAvatar(person: person, size: 84)
+                                    Text(person.name).font(.subheadline).lineLimit(2).multilineTextAlignment(.center).foregroundStyle(.primary)
+                                }
+                            }.buttonStyle(.plain).accessibilityIdentifier("circle.person")
+                        }
                     }
                 }
+                if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
+            }.padding(24).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
+        }.background(Theme.background).navigationTitle("Your circle").searchable(text: $query, prompt: "Find people by name")
+            .task(id: query) {
+                let term = query.trimmingCharacters(in: .whitespaces)
+                guard !term.isEmpty else { results = []; return }
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+                searching = true; defer { searching = false }
+                do { results = try await social.search(term).filter { $0.ownerID != social.actorID }; message = nil }
+                catch { if !Task.isCancelled { message = error.localizedDescription } }
             }
-        }.navigationTitle("Your circle").searchable(text: $query, prompt: "Find people by name")
-            .onChange(of: group, initial: true) { _, value in
-                // Show the last-known people straight away; the fresh list replaces them when it arrives.
-                guard query.isEmpty else { return }
-                people = social.circleCache[value] ?? []
-                lists = value == "following" ? people.flatMap { social.ownerListCache[$0.ownerID] ?? [] } : []
-            }
-            .task(id: "\(query):\(group):\(social.me?.id ?? "")") {
-                do { try await Task.sleep(for: .milliseconds(250)); try Task.checkCancellation(); await load() } catch {}
-            }.refreshable { await load() }
+            .task(id: social.me?.id) { await refresh() }
+            .refreshable { await refresh() }
     }
-    private func load() async {
+    private func refresh() async {
         guard social.enabled, social.me != nil else { return }
-        loading = true; defer { loading = false }
-        do {
-            let term = query.trimmingCharacters(in: .whitespacesAndNewlines), selected = group
-            let rows: [PublicProfile]
-            if !term.isEmpty { rows = try await social.search(term) }
-            else if group == "following" { rows = try await social.following() }
-            else if group == "followers", let me = social.me { rows = try await social.followers(of: me) }
-            else { rows = [] }
-            try Task.checkCancellation()
-            guard term == query.trimmingCharacters(in: .whitespacesAndNewlines), selected == group else { return }
-            people = rows
-            if term.isEmpty { social.circleCache[selected] = rows }
-            if term.isEmpty && group == "following" {
-                var shared: [PublicList] = []
-                for person in rows { shared += try await social.lists(owner: person.ownerID) }
-                lists = shared
-            } else { lists = [] }
-            message = nil
-        } catch { if !Task.isCancelled { people = []; lists = []; message = error.localizedDescription } }
+        do { _ = try await social.following(); message = nil } catch { message = error.localizedDescription }
     }
 }
 
@@ -125,11 +112,12 @@ struct PersonRow: View {
 }
 struct PublicAvatar: View {
     let person: PublicProfile
+    var size: CGFloat = 48
     var body: some View {
         Group {
             if let data = person.photo, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFill() }
-            else { Text(String(person.name.prefix(1))).font(.system(.title2, design: .serif)).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.peach) }
-        }.frame(width: 48, height: 48).clipShape(Circle()).accessibilityHidden(true)
+            else { Text(String(person.name.prefix(1))).font(.system(size: size * 0.42, design: .serif)).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.peach) }
+        }.frame(width: size, height: size).clipShape(Circle()).accessibilityHidden(true)
     }
 }
 /// A person's profile photo, full size.
@@ -147,19 +135,52 @@ struct PhotoViewer: View {
     }
 }
 
-/// "♥ 2 · 1 comment" under a wish, from the list's last-loaded likes and comments.
-struct ReactionCounts: View {
-    let thread: SocialThread?
-    let wishID: UUID
+/// Who's getting a wish, as each person is allowed to see it.
+struct ClaimBadge: View {
+    let state: ClaimState?
     var body: some View {
-        let likes = thread?.wishLikes[wishID] ?? 0, comments = thread?.wishComments[wishID] ?? 0
-        if likes + comments > 0 {
-            HStack(spacing: 14) {
-                if likes > 0 { Label("\(likes)", systemImage: "heart.fill") }
-                if comments > 0 { Label("\(comments)", systemImage: "bubble.left.fill") }
-            }.font(.caption).foregroundStyle(Theme.green)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(likes) \(likes == 1 ? "like" : "likes"), \(comments) \(comments == 1 ? "comment" : "comments")")
+        switch state {
+        case .mine: Label("You’re getting this", systemImage: "gift.fill").font(.caption.weight(.semibold)).foregroundStyle(Theme.green)
+        case .other(let name): Label("\(name) is getting this", systemImage: "gift.fill").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        case .someone: Label("Someone might be getting this", systemImage: "gift").font(.caption.weight(.semibold)).foregroundStyle(Theme.green)
+        case nil: EmptyView()
+        }
+    }
+}
+
+/// "I'm getting this" for someone else's wish. It changes at once and goes back if saving fails.
+struct GetThisButton: View {
+    let listID: String
+    let wishID: UUID
+    @Binding var state: ClaimState?
+    @Environment(SocialStore.self) private var social
+    @State private var saving = false
+    @State private var message: String?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            switch state {
+            case .other(let name):
+                Label("\(name) is getting this", systemImage: "gift.fill").foregroundStyle(.secondary)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
+            case .mine:
+                Label("You’re getting this", systemImage: "gift.fill").font(.headline).foregroundStyle(Theme.green)
+                Button("I’m not getting it anymore") { set(false) }.disabled(saving).accessibilityIdentifier("claim.undo")
+            default:
+                Button { set(true) } label: { Label("I’m getting this", systemImage: "gift").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent).controlSize(.large).disabled(saving || social.me == nil).accessibilityIdentifier("claim.get")
+                Text(social.me == nil ? "Turn on Public account in Settings to mark gifts you’re getting." : "Others will see you’re getting it, so nobody buys it twice. The person who wished for it won’t see who.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let message { Text(message).font(.caption).foregroundStyle(.red) }
+        }
+    }
+    private func set(_ on: Bool) {
+        let before = state
+        state = on ? .mine : nil; saving = true; message = nil
+        Task {
+            do { try await social.setClaim(listID: listID, wishID: wishID, on: on) }
+            catch { state = before; message = error.localizedDescription }
+            saving = false
         }
     }
 }
@@ -188,29 +209,28 @@ struct PublicPersonView: View {
     var body: some View {
         List {
             Section {
-                Button { viewingPhoto = true } label: { PersonRow(person: person) }
-                    .buttonStyle(.plain).disabled(person.photo == nil).accessibilityHint(person.photo == nil ? "" : "Shows the profile photo")
+                VStack(spacing: 12) {
+                    Button { viewingPhoto = true } label: { PublicAvatar(person: person, size: 110) }
+                        .buttonStyle(.plain).disabled(person.photo == nil).accessibilityLabel("Profile photo").accessibilityHint(person.photo == nil ? "" : "Shows the photo full size")
+                    Text(person.name).font(.system(.title2, design: .serif))
+                }.frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
             if person.ownerID != social.actorID {
-                Button(followed ? "Unfollow" : "Follow", systemImage: followed ? "person.badge.minus" : "person.badge.plus") {
-                    // The button flips right away; it only flips back if saving fails.
-                    let wanted = !followed; followed = wanted
-                    Task {
-                        await social.perform { try await social.follow(person, enabled: wanted) }
-                        if social.error != nil { followed = !wanted }
-                    }
-                }.disabled(social.busy).accessibilityIdentifier("social.follow")
+                // Removing someone lives in the ••• menu, so a stray tap here never drops them.
+                if followed { Label("In your circle", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).accessibilityIdentifier("social.inCircle") }
+                else { Button("Add to my circle", systemImage: "person.badge.plus") { toggleCircle() }.accessibilityIdentifier("social.follow") }
             }
             if let message { Text(message).foregroundStyle(.secondary) }
-            Section("Public wishlists") {
+            Section("Wishlists") {
                 ForEach(lists) { list in NavigationLink { PublicListView(id: list.id) } label: { PublicListRow(list: list) } }
-                if lists.isEmpty { Text("No public wishlists to show.").foregroundStyle(.secondary) }
+                if lists.isEmpty { Text("\(person.name) hasn’t shared any wishlists yet.").foregroundStyle(.secondary) }
             }
         }.navigationTitle(person.name).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if person.ownerID != social.actorID {
                     Menu {
                         Button("Report profile", systemImage: "flag") { reporting = true }
+                        if followed { Button("Remove from my circle", systemImage: "person.badge.minus") { toggleCircle() } }
                         Button("Block this person", systemImage: "person.crop.circle.badge.xmark", role: .destructive) { blocking = true }
                     } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("social.person.menu")
                 }
@@ -228,6 +248,19 @@ struct PublicPersonView: View {
                 }.accessibilityIdentifier("social.person.confirmBlock")
             } message: { Text("Their content and interactions will be hidden on your devices. Anything you publish remains public. You can unblock them in Settings.") }
             .task { await load() }.refreshable { await load() }
+    }
+    /// Changes at once; goes back only if saving fails.
+    private func toggleCircle() {
+        let wanted = !followed; followed = wanted
+        Task {
+            do {
+                try await social.follow(person, enabled: wanted)
+                var people = social.circleCache["following"] ?? []
+                if wanted { if !people.contains(where: { $0.ownerID == person.ownerID }) { people.append(person) } }
+                else { people.removeAll { $0.ownerID == person.ownerID } }
+                social.circleCache["following"] = people.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            } catch { followed = !wanted; message = error.localizedDescription }
+        }
     }
     private func load() async {
         do {
@@ -247,6 +280,7 @@ struct PublicListView: View {
     @Environment(SocialStore.self) private var social
     @Environment(\.scenePhase) private var phase
     @State private var list: PublicList?
+    @State private var claims: [UUID: ClaimState] = [:]
     @State private var message: String?
     @State private var reporting = false
     var body: some View {
@@ -262,11 +296,10 @@ struct PublicListView: View {
                                     if wish.fulfilled { Label("Fulfilled", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(.caption) }
                                     Text(wish.title).font(.system(.title2, design: .serif))
                                     OptionRows(options: wish.options, interactive: false)
-                                    ReactionCounts(thread: social.cachedThread(listID: list.id, wishID: nil), wishID: wish.id)
-                                }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(wish.fulfilled ? Theme.sage : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                                    ClaimBadge(state: claims[wish.id])
+                                }.opacity(isTaken(claims[wish.id]) ? 0.55 : 1).padding(20).frame(maxWidth: .infinity, alignment: .leading).background(wish.fulfilled ? Theme.sage : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
                             }.buttonStyle(.plain)
                         }
-                        SocialThreadView(listID: id)
                     }.padding(24).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity)
                 }
             } else if let message { ContentUnavailableView("Wishlist unavailable", systemImage: "lock", description: Text(message)) }
@@ -278,9 +311,16 @@ struct PublicListView: View {
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
     }
     private func load() async {
-        do { list = try await social.publicList(id); message = list == nil ? "This wishlist is private, removed, or hidden." : nil; social.refreshRevision += 1 }
-        catch { list = nil; message = error.localizedDescription }
+        if claims.isEmpty { claims = social.claimCache[id] ?? [:] }
+        do {
+            async let fresh = social.publicList(id)
+            async let taken = social.claims(listID: id)
+            list = try await fresh
+            claims = (try? await taken) ?? claims
+            message = list == nil ? "This wishlist is private, removed, or hidden." : nil
+        } catch { list = nil; message = error.localizedDescription }
     }
+    private func isTaken(_ state: ClaimState?) -> Bool { if case .other = state { true } else { false } }
 }
 
 struct PublicWishView: View {
@@ -289,6 +329,7 @@ struct PublicWishView: View {
     @Environment(SocialStore.self) private var social
     @Environment(\.scenePhase) private var phase
     @State private var wish: PublicWish?
+    @State private var claim: ClaimState?
     @State private var message: String?
     var body: some View {
         ScrollView {
@@ -297,7 +338,8 @@ struct PublicWishView: View {
                     Text(wish.title).font(.system(.largeTitle, design: .serif))
                     if wish.fulfilled { Label("Fulfilled", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
                     OptionRows(options: wish.options)
-                    SocialThreadView(listID: listID, wishID: wishID)
+                    if social.listCache[listID]?.ownerID == social.actorID { ClaimBadge(state: claim) }
+                    else if !wish.fulfilled { GetThisButton(listID: listID, wishID: wishID, state: $claim) }
                 } else { ContentUnavailableView("Wish unavailable", systemImage: "lock", description: Text(message ?? "Loading…")) }
             }.padding(24).frame(maxWidth: 800, alignment: .leading).frame(maxWidth: .infinity)
         }.background(Theme.background).navigationTitle("Shared wish").navigationBarTitleDisplayMode(.inline)
@@ -305,123 +347,14 @@ struct PublicWishView: View {
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
     }
     private func load() async {
-        do { wish = try await social.publicList(listID)?.wishes.first { $0.id == wishID }; message = "This wish is no longer public."; social.refreshRevision += 1 }
-        catch { wish = nil; message = error.localizedDescription }
-    }
-}
-
-struct SocialThreadView: View {
-    let listID: String
-    var wishID: UUID?
-    @Environment(SocialStore.self) private var social
-    @State private var thread = SocialThread()
-    @State private var loaded = false
-    @State private var bodyText = ""
-    @State private var message: String?
-    @State private var deleteID: String?
-    @State private var reportID: String?
-    @State private var savingLike = false
-    /// What this person just did. iCloud's search can take a few seconds to include a new like or comment,
-    /// so these are kept on screen until a refresh shows them.
-    @State private var likedHere: Bool?
-    @State private var postedHere: [SocialComment] = []
-    @FocusState private var writing: Bool
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Divider()
-            Button {
-                // The heart and count change right away; a failed save puts them back.
-                let wanted = !thread.liked
-                thread.liked = wanted; thread.likeCount += wanted ? 1 : -1
-                savingLike = true
-                Task {
-                    // Not routed through `perform`, so a like never waits behind another action.
-                    do { try await social.setLike(listID: listID, wishID: wishID, liked: wanted); likedHere = wanted }
-                    catch { thread.liked = !wanted; thread.likeCount += wanted ? -1 : 1; message = error.localizedDescription }
-                    savingLike = false
-                }
-            } label: {
-                if loaded { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
-                else { Label { ProgressView().controlSize(.small) } icon: { Image(systemName: "heart") } }
-            }
-                // Toggling before the thread loads would act on a placeholder state.
-                .disabled(social.me == nil || !loaded || thread.paused || savingLike)
-                .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
-                .accessibilityIdentifier("social.like")
-            Text(wishID == nil ? "Comments on this list" : "Comments on this wish").font(.system(.title2, design: .serif))
-            if !loaded && message == nil { ProgressView().frame(maxWidth: .infinity, alignment: .leading) }
-            ForEach(thread.comments) { comment in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        NavigationLink { PublicPersonView(person: comment.author) } label: { Text(comment.author.name).font(.subheadline.weight(.semibold)) }
-                        Spacer()
-                        Menu {
-                            if comment.author.ownerID == social.actorID { Button("Delete comment", role: .destructive) { deleteID = comment.id } }
-                            else { Button("Report comment") { reportID = comment.id } }
-                        } label: { Image(systemName: "ellipsis") }
-                    }
-                    Text(comment.text).textSelection(.enabled)
-                    if comment.sending { Text("Sending…").font(.caption).foregroundStyle(.secondary) }
-                    else { Text(comment.createdAt, style: .relative).font(.caption).foregroundStyle(.secondary) }
-                }.opacity(comment.sending ? 0.6 : 1).padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 16))
-            }
-            if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
-            if thread.paused {
-                Text("Comments are paused while this list is private.").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.thread.paused")
-            } else if social.me != nil {
-                HStack(alignment: .bottom) {
-                    TextField("Write a comment…", text: $bodyText, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).focused($writing).accessibilityIdentifier("social.comment.text")
-                    Button("Post", systemImage: "arrow.up.circle.fill") { post() }
-                        .labelStyle(.iconOnly).font(.title2)
-                        .disabled(bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || bodyText.count > 500).accessibilityIdentifier("social.comment.post")
-                }
-                Text("\(bodyText.count)/500").font(.caption2).foregroundStyle(.secondary)
-            } else { Text("Turn on Public account in Settings to join the conversation.").font(.caption).foregroundStyle(.secondary) }
-        }.onAppear {
-            if !loaded, let cached = social.cachedThread(listID: listID, wishID: wishID) { thread = cached; loaded = true }
-        }
-        .task(id: social.refreshRevision) { await load() }
-            .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { writing = false }.accessibilityIdentifier("social.keyboard.done") } }
-            .confirmationDialog("Delete your comment?", isPresented: Binding(get: { deleteID != nil }, set: { if !$0 { deleteID = nil } }), titleVisibility: .visible) {
-                Button("Delete comment", role: .destructive) { if let id = deleteID { Task { await social.perform { try await social.deleteComment(id); deleteID = nil; await load() } } } }
-            }
-            .sheet(isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })) { if let id = reportID { ReportView(id: id) } }
-    }
-    /// The comment appears right away and is marked as sent once iCloud has it.
-    private func post() {
-        guard let me = social.me else { return }
-        let text = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let placeholder = SocialComment(id: "sending-\(UUID().uuidString)", author: me, text: text, createdAt: Date(), sending: true)
-        thread.comments.append(placeholder); bodyText = ""; writing = false
-        Task {
-            do {
-                let saved = try await social.comment(listID: listID, wishID: wishID, text: text)
-                postedHere.append(saved)
-                if let index = thread.comments.firstIndex(where: { $0.id == placeholder.id }) { thread.comments[index] = saved }
-            } catch {
-                thread.comments.removeAll { $0.id == placeholder.id }
-                bodyText = text; message = error.localizedDescription
-            }
-        }
-    }
-    private func load() async {
+        if claim == nil { claim = social.claimCache[listID]?[wishID] }
         do {
-            let fresh = try await social.thread(listID: listID, wishID: wishID)
-            // A like that's still saving would otherwise flicker back for a moment.
-            // A like or comment still saving, or too new for the search, would otherwise flicker out.
-            if !savingLike {
-                var merged = fresh
-                let known = Set(fresh.comments.map(\.id))
-                postedHere.removeAll { known.contains($0.id) }
-                merged.comments += postedHere + thread.comments.filter(\.sending)
-                if let likedHere {
-                    if merged.liked == likedHere { self.likedHere = nil }
-                    else { merged.liked = likedHere; merged.likeCount = max(0, merged.likeCount + (likedHere ? 1 : -1)) }
-                }
-                thread = merged
-            }
-            message = nil; loaded = true
-        } catch { thread = SocialThread(); message = error.localizedDescription; loaded = false }
+            async let fresh = social.publicList(listID)
+            async let taken = social.claims(listID: listID)
+            wish = try await fresh?.wishes.first { $0.id == wishID }
+            if let states = try? await taken { claim = states[wishID] }
+            message = "This wish is no longer public."
+        } catch { wish = nil; message = error.localizedDescription }
     }
 }
 
@@ -459,7 +392,7 @@ struct SocialThreadView: View {
     func save(_ value: SocialRow) async throws -> SocialRow {
         if let old = rows[value.id], old.creator != user { throw WishwellError("Only the author may edit this content.") }
         if let parent = value.parent, rows[parent] == nil { throw WishwellError("This shared content was removed.") }
-        var row = value; row.creator = user; rows[row.id] = row; return row
+        var row = value; row.creator = user; row.modifiedAt = Date(); rows[row.id] = row; return row
     }
     func delete(_ row: SocialRow) async throws {
         guard rows[row.id]?.creator == user else { throw WishwellError("Only the author may delete this content.") }
@@ -513,12 +446,13 @@ struct ActivityView: View {
         List {
             if let message { Text(message).foregroundStyle(.secondary) }
             if rows.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
-            else if rows.isEmpty { ContentUnavailableView("You’re all caught up", systemImage: "bell", description: Text("Follows, likes, comments, and new public wishes from your circle appear here.")) }
+            else if rows.isEmpty { ContentUnavailableView("You’re all caught up", systemImage: "bell", description: Text("When someone adds you to their circle, might be getting one of your wishes, or adds a new wish, it shows up here.")) }
             ForEach(rows) { row in
                 Group {
                     if let list = row.list, let wishID = row.wishID { NavigationLink { PublicWishView(listID: list.id, wishID: wishID).onAppear { markRead([row]) } } label: { activityRow(row) } }
                     else if let list = row.list { NavigationLink { PublicListView(id: list.id).onAppear { markRead([row]) } } label: { activityRow(row) } }
-                    else { NavigationLink { PublicPersonView(person: row.actor).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else if let actor = row.actor { NavigationLink { PublicPersonView(person: actor).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else { activityRow(row) }
                 }.accessibilityValue(readState.contains { $0.id == row.id } ? "Read" : "Unread")
             }
         }.navigationTitle("Notifications")
@@ -590,28 +524,6 @@ struct PublicSwitch: View {
     }
 }
 
-/// Likes and comments on one of the current person's own lists, found whether the list is public or private.
-struct OwnListThread: View {
-    let list: WishList
-    var wishID: UUID?
-    @Environment(SocialStore.self) private var social
-    @State private var recordID: String?
-    var body: some View {
-        // A VStack with a placeholder always appears on screen, so the lookup below runs even before anything is found.
-        VStack(alignment: .leading) {
-            // Switching the list public or private loads the conversation again, so it opens or pauses at once.
-            if let recordID { SocialThreadView(listID: recordID, wishID: wishID).id("\(recordID)|\(list.publicRecordName != nil)") }
-            else { Color.clear.frame(height: 1) }
-        }
-            // Also reruns once the public account has loaded: a list opened right after launch would otherwise find none and stop.
-            .task(id: "\(list.publicRecordName ?? "")|\(social.me?.id ?? "")") {
-                guard social.enabled, social.me != nil else { recordID = nil; return }
-                if let id = list.publicRecordName { recordID = id; return }
-                recordID = try? await social.ownListRecord(source: list.id)?.id
-            }
-    }
-}
-
 #if DEBUG
 import CloudKit
 
@@ -643,7 +555,7 @@ struct LiveSocialCheckView: View {
     @MainActor private func cleanupFixtures(user: String, delete: Bool) async throws {
         var found: [SocialRow] = []
         // Children first, so a cascade never races the explicit deletes that follow.
-        for kind in [SocialKind.like, .comment, .follow, .report, .list, .profile] {
+        for kind in [SocialKind.claim, .comment, .follow, .report, .list, .profile] {
             found += try await database.query(SocialQuery(kind: kind, creator: user)).filter { $0.creator == user && SocialStore.isDiagnosticFixture($0.id) }
         }
         note("Found \(found.count) synthetic records owned by this account")
@@ -749,14 +661,14 @@ struct LiveSocialCheckView: View {
         try require(reports.isEmpty, "Report query exposed another account's reports.")
         note("PASS: foreign report hidden from direct fetch and creator query")
         _ = try await database.save(SocialRow(id: prefix + "-peer-follow", kind: .follow, parent: profileID, payload: encoder.encode(SocialAction())))
-        let like = try await database.save(SocialRow(id: prefix + "-peer-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+        let like = try await database.save(SocialRow(id: prefix + "-peer-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
         let comment = try await database.save(SocialRow(id: prefix + "-peer-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cross-account comment"))))
         try require(like.creator == user && comment.creator == user, "Interaction creator metadata did not match.")
         try require(try await database.record(comment.id) != nil, "Own comment on peer list could not be read.")
         try await database.delete(comment)
         try await database.delete(like)
         note("PASS: follow, like/comment on peer list, and delete own interactions")
-        _ = try await database.save(SocialRow(id: prefix + "-cascade-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+        _ = try await database.save(SocialRow(id: prefix + "-cascade-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
         _ = try await database.save(SocialRow(id: prefix + "-cascade-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cascade check"))))
         note("Prepared synthetic interactions for cross-account cascade verification")
         note("COMPLETE: first-account and cross-account checks passed. Reciprocal checks and cascade removal remain.")
@@ -821,7 +733,7 @@ struct LiveSocialCheckView: View {
             let list = try await database.save(SocialRow(id: listID, kind: .list, parent: profileID, sourceID: source.id.uuidString, payload: encoder.encode(snapshot)))
             try require(list.creator == user, "List creator metadata did not match.")
             note("PASS: publish synthetic list")
-            _ = try await database.save(SocialRow(id: prefix + "-like", kind: .like, parent: listID, payload: encoder.encode(SocialAction())))
+            _ = try await database.save(SocialRow(id: prefix + "-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
             _ = try await database.save(SocialRow(id: prefix + "-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic permission check"))))
             note("PASS: create own like and comment")
             _ = try await database.save(SocialRow(id: reportID, kind: .report, payload: encoder.encode(["target": listID, "reason": "Synthetic permission test; no moderation action needed"])))

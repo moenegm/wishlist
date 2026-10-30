@@ -99,11 +99,10 @@ struct ListDetail: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16)], spacing: 16) {
                     ForEach(list.sortedWishes.filter { showFulfilled || !$0.fulfilled }) { wish in
                         NavigationLink { WishDetail(wish: wish) } label: {
-                            WishTile(wish: wish, counts: list.publicRecordName.flatMap { social.cachedThread(listID: $0, wishID: nil) })
+                            WishTile(wish: wish, claim: list.publicRecordName.flatMap { social.claimCache[$0]?[wish.id] })
                         }.buttonStyle(.plain)
                     }
                 }
-                OwnListThread(list: list)
             }.padding(24).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
         }.background(Theme.background).navigationTitle("Wishlist").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -113,6 +112,10 @@ struct ListDetail: View {
                     ShareLink(item: shareText) { Label("Share a text copy", systemImage: "square.and.arrow.up") }
                     Button("Delete wishlist", systemImage: "trash", role: .destructive) { deleting = true }.disabled(!(list.wishes ?? []).isEmpty)
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("list.menu")
+            }
+            // Loads which wishes someone might be getting, once the public account is ready.
+            .task(id: "\(list.publicRecordName ?? "")|\(social.me?.id ?? "")") {
+                if let id = list.publicRecordName, social.me != nil { _ = try? await social.claims(listID: id) }
             }
             .sheet(isPresented: $adding) { WishEditor(list: list) }
             .sheet(isPresented: $editing) { ListEditor(existing: list) }
@@ -150,13 +153,13 @@ struct ListDetail: View {
 
 struct WishTile: View {
     let wish: Wish
-    var counts: SocialThread?
+    var claim: ClaimState?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label(wish.fulfilled ? "Fulfilled" : "A little wish", systemImage: wish.fulfilled ? "checkmark.circle.fill" : "sparkles").font(.caption).foregroundStyle(Theme.green)
             Text(wish.title).font(.system(.title2, design: .serif)).foregroundStyle(.primary)
             OptionRows(options: wish.options, interactive: false)
-            ReactionCounts(thread: counts, wishID: wish.id)
+            ClaimBadge(state: claim)
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
             .background(wish.fulfilled ? Theme.sage : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
     }
@@ -182,6 +185,7 @@ struct OptionRows: View {
 
 struct WishDetail: View {
     let wish: Wish
+    @Environment(SocialStore.self) private var social
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var editing = false
@@ -198,7 +202,7 @@ struct WishDetail: View {
                 } label: { Label(wish.fulfilled ? "Fulfilled" : "Mark fulfilled", systemImage: wish.fulfilled ? "checkmark.circle.fill" : "checkmark.circle") }
                     .buttonStyle(.bordered).accessibilityIdentifier("wish.fulfilled")
                 OptionRows(options: wish.options)
-                if let list = wish.list { OwnListThread(list: list, wishID: wish.id) }
+                if let id = wish.list?.publicRecordName { ClaimBadge(state: social.claimCache[id]?[wish.id]) }
             }.padding(24).frame(maxWidth: 800, alignment: .leading).frame(maxWidth: .infinity)
         }.background(wish.fulfilled ? Theme.sage.opacity(0.3) : Theme.background).navigationTitle("Wish").navigationBarTitleDisplayMode(.inline)
             .toolbar {

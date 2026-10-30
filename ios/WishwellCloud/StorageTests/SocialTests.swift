@@ -40,7 +40,7 @@ import XCTest
             row.creator = user
         }
         if let parent = row.parent, rows[parent] == nil { throw WishwellError("Missing parent") }
-        row.systemFields = Data(UUID().uuidString.utf8); rows[row.id] = row; writes += 1
+        row.modifiedAt = Date(); row.systemFields = Data(UUID().uuidString.utf8); rows[row.id] = row; writes += 1
         return row
     }
     func delete(_ row: SocialRow) async throws {
@@ -104,7 +104,7 @@ final class SocialTests: XCTestCase {
         expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
         let listID = try await owner.publish(snapshot, existingID: nil)
         try await owner.syncAlerts()
-        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .like, parent: listID).id, SocialAlert(kind: .comment, parent: listID).id]))
+        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .claim, parent: listID).id]))
         database.alerts["owner"]?.insert("someone-elses-subscription")
         try await owner.unpublish(listID)
         try await owner.syncAlerts()
@@ -119,7 +119,7 @@ final class SocialTests: XCTestCase {
         let me = try unwrap(owner.me)
         database.laggingIndex = database.rows
         let listID = try await owner.publish(snapshot, existingID: nil)
-        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .like, parent: listID).id, SocialAlert(kind: .comment, parent: listID).id]))
+        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .claim, parent: listID).id]))
         database.laggingIndex = database.rows
         try await owner.unpublish(listID)
         expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
@@ -175,53 +175,64 @@ final class SocialTests: XCTestCase {
         database.user = "owner"
         let before = database.writes
         let activity = try await owner.activity()
-        XCTAssertEqual(activity.count, 1); XCTAssertTrue(activity.first?.message.contains("Tomas followed") == true)
+        XCTAssertEqual(activity.count, 1); XCTAssertEqual(activity.first?.message, "Tomas added you to their circle")
         XCTAssertEqual(database.writes, before)
         database.user = "friend"; try await friend.follow(me, enabled: false)
         expectTrue(try await friend.following().isEmpty)
     }
 
-    @MainActor func testLikesAndCommentsRespectListAndWishTargets() async throws {
-        let (database, owner, _, snapshot) = try await fixture()
-        let id = try await owner.publish(snapshot, existingID: nil)
-        let friend = try await member(database)
-        try await friend.setLike(listID: id, wishID: nil, liked: true)
-        try await friend.setLike(listID: id, wishID: nil, liked: true)
-        let wishID = try XCTUnwrap(snapshot.wishes.first?.id)
-        try await friend.comment(listID: id, wishID: wishID, text: " Lovely chair ")
-        let listThread = try await friend.thread(listID: id, wishID: nil)
-        let wishThread = try await friend.thread(listID: id, wishID: wishID)
-        XCTAssertEqual(listThread.likeCount, 1); XCTAssertTrue(listThread.liked); XCTAssertTrue(listThread.comments.isEmpty)
-        XCTAssertEqual(wishThread.comments.first?.text, "Lovely chair"); XCTAssertEqual(wishThread.likeCount, 0)
-        await rejects { try await friend.comment(listID: id, wishID: UUID(), text: "Unknown wish") }
-        await rejects { try await friend.comment(listID: id, wishID: nil, text: String(repeating: "a", count: 501)) }
-        try await friend.setLike(listID: id, wishID: nil, liked: false)
-        expectEqual(try await friend.thread(listID: id, wishID: nil).likeCount, 0)
+    @MainActor private func cousin(_ database: TestSocialDatabase) async throws -> SocialStore {
+        database.user = "cousin"
+        let cousin = SocialStore(database: database, enabled: true)
+        try await cousin.saveProfile(name: "Laila", photo: nil)
+        return cousin
     }
 
-    @MainActor func testOnlyOwnerCanPublishAndOnlyAuthorCanDeleteComment() async throws {
+    @MainActor func testGiversSeeWhoIsGettingAWishButTheOwnerOnlyLearnsSomeoneIs() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
+        let friend = try await member(database)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
+        expectEqual(try await friend.claims(listID: id)[wishID], .mine)
+        let laila = try await cousin(database)
+        expectEqual(try await laila.claims(listID: id)[wishID], .other("Tomas"))
+        await rejects { try await laila.setClaim(listID: id, wishID: wishID, on: true) }
+        await rejects { try await laila.setClaim(listID: id, wishID: UUID(), on: true) }
+        database.user = "owner"
+        expectEqual(try await owner.claims(listID: id)[wishID], .someone)
+        await rejects { try await owner.setClaim(listID: id, wishID: wishID, on: true) }
+        database.user = "friend"
+        try await friend.setClaim(listID: id, wishID: wishID, on: false)
+        database.user = "cousin"
+        expectNil(try await laila.claims(listID: id)[wishID])
+        try await laila.setClaim(listID: id, wishID: wishID, on: true)
+        expectEqual(try await laila.claims(listID: id)[wishID], .mine)
+    }
+
+    @MainActor func testOnlyOwnerCanPublishAndUndoingOnlyAffectsYourOwnClaim() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
         let friend = try await member(database)
         await rejects { _ = try await friend.publish(snapshot, existingID: id) }
         await rejects { try await friend.unpublish(id) }
-        try await friend.comment(listID: id, wishID: nil, text: "A comment")
-        let comment = try unwrap(try await friend.thread(listID: id, wishID: nil).comments.first)
-        database.user = "owner"
-        await rejects { try await owner.deleteComment(comment.id) }
-        database.user = "friend"; try await friend.deleteComment(comment.id)
-        expectTrue(try await friend.thread(listID: id, wishID: nil).comments.isEmpty)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
+        let laila = try await cousin(database)
+        try await laila.setClaim(listID: id, wishID: wishID, on: false)
+        expectEqual(try await laila.claims(listID: id)[wishID], .other("Tomas"))
     }
 
     @MainActor func testUnpublishHidesOrphanedInteractionsAndRejectsStaleRepublishing() async throws {
         let (database, owner, privateList, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
         let stale = try XCTUnwrap(database.rows[id])
         let friend = try await member(database)
-        try await friend.comment(listID: id, wishID: nil, text: "Old public comment")
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
         database.user = "owner"; database.keepOrphans = true
         try await owner.unpublish(id)
-        XCTAssertTrue(database.rows.values.contains { $0.kind == .comment })
+        XCTAssertTrue(database.rows.values.contains { $0.kind == .claim })
         XCTAssertEqual(privateList.wishes?.count, 1)
         await rejects { _ = try await owner.publish(snapshot, existingID: id) }
         await rejects { _ = try await database.save(stale) }
@@ -229,43 +240,32 @@ final class SocialTests: XCTestCase {
         expectTrue(try await owner.activity().isEmpty)
         database.user = "friend"
         expectNil(try await friend.publicList(id))
-        await rejects { _ = try await friend.thread(listID: id, wishID: nil) }
-        await rejects { try await friend.comment(listID: id, wishID: nil, text: "Too late") }
+        await rejects { try await friend.setClaim(listID: id, wishID: wishID, on: true) }
     }
 
-    @MainActor func testMakingAListPrivateKeepsItsLikesAndCommentsForTheOwner() async throws {
+    @MainActor func testMakingAListPrivateKeepsWhoIsGettingWhatForWhenItIsSharedAgain() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
         let friend = try await member(database)
-        try await friend.comment(listID: id, wishID: nil, text: "Lovely list")
-        try await friend.setLike(listID: id, wishID: nil, liked: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
         database.user = "owner"
         try await owner.pause(id)
-        // Nothing of the list itself stays public.
+        // Nothing of the list itself stays public, and nobody can claim from it.
         let paused = try unwrap(database.rows[id])
         XCTAssertFalse(String(decoding: paused.payload, as: UTF8.self).contains("Private room"))
         expectTrue(try await owner.lists(owner: "owner").isEmpty)
-        // The owner still reads what was said, but nobody can add to it.
-        let ownerView = try await owner.thread(listID: id, wishID: nil)
-        expectTrue(ownerView.paused)
-        expectEqual(ownerView.comments.map(\.text), ["Lovely list"])
-        expectEqual(ownerView.likeCount, 1)
-        await rejects { try await owner.comment(listID: id, wishID: nil, text: "My own note") }
         database.user = "friend"
         expectNil(try await friend.publicList(id))
-        await rejects { _ = try await friend.thread(listID: id, wishID: nil) }
-        await rejects { try await friend.comment(listID: id, wishID: nil, text: "Still here?") }
-        await rejects { try await friend.setLike(listID: id, wishID: nil, liked: false) }
-        // Sharing it again reuses the same record, so everything comes back.
+        await rejects { try await friend.setClaim(listID: id, wishID: wishID, on: false) }
+        // Sharing it again reuses the same record, so the claim is still there.
         database.user = "owner"
         expectEqual(try await owner.publish(snapshot, existingID: nil), id)
-        let restored = try await owner.thread(listID: id, wishID: nil)
-        XCTAssertFalse(restored.paused)
-        expectEqual(restored.comments.map(\.text), ["Lovely list"])
+        expectEqual(try await owner.claims(listID: id)[wishID], .someone)
         expectEqual(try await owner.lists(owner: "owner").map(\.id), [id])
     }
 
-    @MainActor func testWishActivityPointsAtTheWishAndScreensCanShowLastKnownResults() async throws {
+    @MainActor func testOwnerHearsWhenSomeoneMightBeGettingAWishAndWhenItIsOpenAgain() async throws {
         let (database, owner, privateList, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
         let wishID = try unwrap(privateList.wishes?.first?.id)
@@ -274,18 +274,19 @@ final class SocialTests: XCTestCase {
         expectEqual(friend.followingOwners, nil)
         _ = try await friend.following()
         expectEqual(friend.followingOwners, ["owner"])
-        try await friend.comment(listID: id, wishID: wishID, text: "This one!")
-        try await friend.setLike(listID: id, wishID: wishID, liked: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
         database.user = "owner"
-        let comment = try unwrap(try await owner.activity().first { $0.message.contains("commented") })
-        expectEqual(comment.wishID, wishID)
-        expectEqual(comment.message, "Tomas commented on your wish Chair")
-        let whole = try await owner.thread(listID: id, wishID: nil)
-        expectEqual(whole.wishComments[wishID], 1)
-        expectEqual(whole.wishLikes[wishID], 1)
-        expectTrue(whole.comments.isEmpty)
-        _ = try await owner.thread(listID: id, wishID: wishID)
-        expectEqual(owner.cachedThread(listID: id, wishID: wishID)?.comments.map(\.text), ["This one!"])
+        let getting = try unwrap(try await owner.activity().first { $0.message.contains("getting") })
+        expectEqual(getting.message, "Someone might be getting your wish Chair")
+        expectNil(getting.actor)
+        expectEqual(getting.wishID, wishID)
+        database.user = "friend"
+        try await friend.setClaim(listID: id, wishID: wishID, on: false)
+        database.user = "owner"
+        let open = try unwrap(try await owner.activity().first { $0.message.contains("open again") })
+        expectEqual(open.message, "Chair is open again")
+        XCTAssertNotEqual(open.id, getting.id)
+        expectEqual(owner.claimCache[id]?[wishID], nil)
         XCTAssertNotNil(owner.listCache[id])
         try await owner.pause(id)
         XCTAssertNil(owner.listCache[id])
@@ -300,16 +301,15 @@ final class SocialTests: XCTestCase {
         expectEqual(database.rows.values.filter { $0.kind == .list }.count, 1)
     }
 
-    @MainActor func testBlockedAuthorsAreHiddenFromDiscoveryThreadsAndActivity() async throws {
+    @MainActor func testBlockedPeopleAreHiddenFromDiscoveryClaimsAndActivity() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
         let friend = try await member(database)
-        try await friend.comment(listID: id, wishID: nil, text: "Hello")
-        try await friend.setLike(listID: id, wishID: nil, liked: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
         database.user = "owner"; owner.hidden.insert("friend")
         expectTrue(try await owner.search("to").isEmpty)
-        let thread = try await owner.thread(listID: id, wishID: nil)
-        XCTAssertEqual(thread.likeCount, 0); XCTAssertTrue(thread.comments.isEmpty)
+        expectTrue(try await owner.claims(listID: id).isEmpty)
         expectTrue(try await owner.activity().isEmpty)
     }
 
@@ -319,7 +319,7 @@ final class SocialTests: XCTestCase {
         let friend = try await member(database)
         database.afterQuery = { database.user = "unrelated" }
         let before = database.writes
-        await rejects { try await friend.setLike(listID: id, wishID: nil, liked: true) }
+        await rejects { try await friend.setClaim(listID: id, wishID: try XCTUnwrap(snapshot.wishes.first?.id), on: true) }
         XCTAssertEqual(database.writes, before)
         XCTAssertNil(friend.me)
     }
@@ -343,16 +343,26 @@ final class SocialTests: XCTestCase {
         await rejects { _ = try await database.record(reportID) }
         expectTrue(try await database.query(SocialQuery(kind: .report)).isEmpty)
     }
-    @MainActor func testDuplicateLikesCountOnceAndUnlikingRemovesAllOwnCopies() async throws {
+    @MainActor func testDuplicateClaimsShowOnceAndUndoingClearsEveryCopy() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
         let friend = try await member(database)
         for _ in 0..<2 {
-            _ = try await database.save(SocialRow(kind: .like, parent: id, payload: JSONEncoder().encode(SocialAction())))
+            _ = try await database.save(SocialRow(kind: .claim, parent: id, payload: JSONEncoder().encode(GiftClaim(wishID: wishID, active: true))))
         }
-        expectEqual(try await friend.thread(listID: id, wishID: nil).likeCount, 1)
-        try await friend.setLike(listID: id, wishID: nil, liked: false)
-        expectEqual(try await friend.thread(listID: id, wishID: nil).likeCount, 0)
+        expectEqual(try await friend.claims(listID: id)[wishID], .mine)
+        try await friend.setClaim(listID: id, wishID: wishID, on: false)
+        expectNil(try await friend.claims(listID: id)[wishID])
+    }
+    @MainActor func testOldLikesAreNotMistakenForClaims() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        _ = try await member(database)
+        _ = try await database.save(SocialRow(kind: .claim, parent: id, payload: JSONEncoder().encode(SocialAction(wishID: snapshot.wishes.first?.id))))
+        database.user = "owner"
+        expectTrue(try await owner.claims(listID: id).isEmpty)
+        expectTrue(try await owner.activity().isEmpty)
     }
     @MainActor func testFollowersAndUnfollowAcrossDuplicateProfileRecords() async throws {
         let (database, owner, _, _) = try await fixture()
@@ -367,19 +377,19 @@ final class SocialTests: XCTestCase {
         try await friend.follow(canonical, enabled: false)
         expectTrue(try await friend.following().isEmpty)
     }
-    @MainActor func testRemovedWishTitlesDisappearFromActivityAndThreads() async throws {
+    @MainActor func testRemovedWishTitlesDisappearFromActivityAndClaims() async throws {
         let (database, owner, _, original) = try await fixture()
         let id = try await owner.publish(original, existingID: nil)
         let friend = try await member(database)
         let wishID = try XCTUnwrap(original.wishes.first?.id)
-        try await friend.setLike(listID: id, wishID: wishID, liked: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
         database.user = "owner"
         expectTrue(try await owner.activity().contains { $0.message.contains("Chair") })
         var updated = original; updated.wishes = []
         _ = try await owner.publish(updated, existingID: id)
         expectTrue(try await owner.activity().isEmpty)
         database.user = "friend"
-        await rejects { _ = try await friend.thread(listID: id, wishID: wishID) }
+        await rejects { try await friend.setClaim(listID: id, wishID: wishID, on: false) }
     }
     @MainActor func testForeignProfileParentCannotImpersonateOwner() async throws {
         let (database, owner, _, snapshot) = try await fixture()

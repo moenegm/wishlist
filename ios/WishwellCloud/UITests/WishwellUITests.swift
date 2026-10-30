@@ -5,30 +5,28 @@ final class WishwellUITests: XCTestCase {
         try createWish(local: true)
     }
 
-    @MainActor func testSocialPreviewLikeAndComment() throws {
+    @MainActor func testSocialPreviewGettingAWishFromYourCircle() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication(); app.launchArguments = ["--social-preview"]; app.launch()
         let circle = app.buttons["Circle"]
         if circle.waitForExistence(timeout: 10) { circle.tap() }
         else { app.staticTexts["Circle"].firstMatch.tap() }
-        let shared = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "A cozy corner")).firstMatch
-        guard shared.waitForExistence(timeout: 10) else {
+        let person = app.buttons.matching(identifier: "circle.person").firstMatch
+        guard person.waitForExistence(timeout: 10) else {
             let failure = XCTAttachment(screenshot: app.screenshot()); failure.lifetime = .keepAlways; add(failure)
-            XCTFail("Shared feed missing: \(app.debugDescription)"); return
-        }; shared.tap()
-        let like = app.buttons["social.like"]
-        if !like.isHittable { app.swipeUp() }
-        XCTAssertTrue(like.waitForExistence(timeout: 5))
-        XCTAssertTrue(waitForValue(like, equalTo: "Not liked", timeout: 10)); like.tap()
-        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 5)); XCTAssertEqual(like.label, "1 like")
-        let field = app.textFields["social.comment.text"]
-        let editor = field.exists ? field : app.textViews["social.comment.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap(); editor.typeText("A lovely place to read")
-        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-        app.buttons["social.comment.post"].tap()
-        XCTAssertTrue(app.staticTexts["A lovely place to read"].waitForExistence(timeout: 5))
-        let proof = XCTAttachment(screenshot: app.screenshot()); proof.name = "Social preview like and comment"; proof.lifetime = .keepAlways; add(proof)
+            XCTFail("Circle grid missing: \(app.debugDescription)"); return
+        }
+        person.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["social.inCircle"].waitForExistence(timeout: 10))
+        tapLabel(app, "A cozy corner", timeout: 10)
+        tapLabel(app, "Reading chair", timeout: 10)
+        let get = app.buttons["claim.get"]; XCTAssertTrue(get.waitForExistence(timeout: 10)); get.tap()
+        let undo = app.buttons["claim.undo"]; XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        XCTAssertTrue(labelled(app, "You’re getting this").exists)
+        let proof = XCTAttachment(screenshot: app.screenshot()); proof.name = "Getting a wish"; proof.lifetime = .keepAlways; add(proof)
+        undo.tap()
+        XCTAssertTrue(get.waitForExistence(timeout: 10))
     }
 
     @MainActor func testPrivateListPublishAndUnpublishInSocialPreview() throws {
@@ -42,11 +40,7 @@ final class WishwellUITests: XCTestCase {
         let sharing = app.switches["list.public"]; XCTAssertTrue(sharing.waitForExistence(timeout: 5))
         XCTAssertEqual(sharing.value as? String, "0")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 10), "The list did not become public")
-        // The owner sees the list's likes and comments on their own list page, both public and private.
-        XCTAssertTrue(app.staticTexts["Comments on this list"].waitForExistence(timeout: 10), "Own public list shows no likes and comments")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "0", timeout: 10), "The list did not become private")
-        XCTAssertTrue(app.staticTexts["social.thread.paused"].waitForExistence(timeout: 10) || app.staticTexts["Comments are paused while this list is private."].exists,
-                      "Own private list doesn't show its paused comments")
     }
 
     @MainActor func testCreateCloudSyncFixture() throws {
@@ -92,8 +86,9 @@ final class WishwellUITests: XCTestCase {
         let app = try launchLiveSocial()
         try ensurePublicProfile(app, name: peerName)
         unblockEveryone(app)
-        followLikeAndComment(app)
-        app.buttons["social.list.report"].tap()
+        followAndGetWish(app)
+        app.navigationBars.buttons.firstMatch.tap()
+        let report = app.buttons["social.list.report"]; XCTAssertTrue(report.waitForExistence(timeout: 10)); report.tap()
         let reason = app.textFields["social.report.reason"].exists ? app.textFields["social.report.reason"] : app.textViews["social.report.reason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 5)); reason.tap(); reason.typeText("Live UI check. No moderation action needed.")
         app.buttons["social.report.submit"].tap()
@@ -103,20 +98,20 @@ final class WishwellUITests: XCTestCase {
         let menu = app.buttons["social.person.menu"]; XCTAssertTrue(menu.waitForExistence(timeout: 10)); menu.tap()
         app.buttons["Block this person"].tap(); app.buttons["social.person.confirmBlock"].firstMatch.tap()
         search(app, "Wishwell Owner")
-        XCTAssertTrue(app.staticTexts["No people to show yet."].waitForExistence(timeout: 20), "Blocked person still appears in search")
+        XCTAssertTrue(app.staticTexts["No one by that name yet."].waitForExistence(timeout: 20), "Blocked person still appears in search")
         openArea(app, "Settings")
         let unblock = app.buttons["social.unblock"]; scrollTo(app, unblock)
         XCTAssertTrue(unblock.waitForExistence(timeout: 10), "Blocked person missing from Settings"); unblock.tap()
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
         XCTAssertTrue(labelled(app, ownerName).waitForExistence(timeout: 30), "Unblocked person did not return to search")
-        attach(app, "Peer followed, liked, commented, reported, blocked and unblocked")
+        attach(app, "Peer added owner, got a wish, reported, blocked and unblocked")
     }
 
     @MainActor func testLiveSocial3OwnerSeesActivityThenRemovesEverything() throws {
         let app = try launchLiveSocial()
         openArea(app, "Notifications")
-        for text in ["\(peerName) followed you", "\(peerName) liked your list \(liveList)", "\(peerName) commented on your list \(liveList)"] {
+        for text in ["\(peerName) added you to their circle", "Someone might be getting your wish Live check wish"] {
             XCTAssertTrue(labelled(app, text).waitForExistence(timeout: 30), "Missing activity: \(text)")
         }
         app.buttons["social.activity.markRead"].tap()
@@ -132,7 +127,7 @@ final class WishwellUITests: XCTestCase {
         let app = try launchLiveSocial()
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
-        XCTAssertTrue(app.staticTexts["No people to show yet."].waitForExistence(timeout: 30), "Removed profile still appears in search")
+        XCTAssertTrue(app.staticTexts["No one by that name yet."].waitForExistence(timeout: 30), "Removed profile still appears in search")
         try removePublicProfile(app)
     }
 
@@ -152,15 +147,13 @@ final class WishwellUITests: XCTestCase {
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
         tapLabel(app, ownerName, timeout: 30)
-        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
-        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
-        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
+        addToCircle(app)
     }
 
     @MainActor func testLiveReadSync3OwnerMarksRead() throws {
         let app = try launchLiveSocial(personalLibrary: true)
         openArea(app, "Notifications")
-        let row = labelled(app, "\(peerName) followed you")
+        let row = labelled(app, "\(peerName) added you to their circle")
         XCTAssertTrue(row.waitForExistence(timeout: 30), "Follow notification missing")
         app.buttons["social.activity.markRead"].tap()
         XCTAssertTrue(waitForValue(row, equalTo: "Read", timeout: 10))
@@ -172,12 +165,12 @@ final class WishwellUITests: XCTestCase {
     @MainActor func testLiveReadSync4SecondDeviceSeesReadThenRemovesProfile() throws {
         let app = try launchLiveSocial(personalLibrary: true)
         openArea(app, "Notifications")
-        let row = labelled(app, "\(peerName) followed you")
+        let row = labelled(app, "\(peerName) added you to their circle")
         XCTAssertTrue(row.waitForExistence(timeout: 60), "Follow notification missing on second device")
         XCTAssertTrue(waitForValue(row, equalTo: "Read", timeout: 240), "Read marker did not sync from the other device")
         attach(app, "Second device shows synced read marker")
         openArea(app, "Circle")
-        XCTAssertTrue(app.buttons["Followers"].waitForExistence(timeout: 30), "Circle did not load on the second device")
+        XCTAssertTrue(app.navigationBars["Your circle"].waitForExistence(timeout: 30), "Circle did not load on the second device")
         attach(app, "Circle on second device")
         try removePublicProfile(app)
     }
@@ -185,61 +178,6 @@ final class WishwellUITests: XCTestCase {
     @MainActor func testLiveReadSync5PeerRemovesProfile() throws {
         let app = try launchLiveSocial()
         try removePublicProfile(app)
-    }
-
-    // MARK: Push alerts, owner iPhone (1, 3) and peer iPhone (2)
-    // Afterwards run testLiveSocial3 on the owner and testLiveSocial4 on the peer to remove everything.
-
-    @MainActor func testLiveAlerts1OwnerPublishesAndAllowsAlerts() throws {
-        let app = try launchLiveSocial(extra: ["--alerts"])
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        try ensurePublicProfile(app, name: ownerName)
-        let allow = springboard.alerts.buttons["Allow"]
-        if allow.waitForExistence(timeout: 15) { allow.tap() }
-        publishLiveList(app)
-        // Give the alert subscriptions time to reach CloudKit, then close the app.
-        sleep(15)
-        app.terminate()
-    }
-
-    @MainActor func testLiveAlerts2PeerFollowsLikesAndComments() throws {
-        let app = try launchLiveSocial()
-        try ensurePublicProfile(app, name: peerName)
-        unblockEveryone(app)
-        followLikeAndComment(app)
-        // A fresh comment each run, so a rerun still creates a record that should raise an alert.
-        try postFreshComment(app)
-        attach(app, "Peer followed, liked and commented")
-    }
-
-    /// Same account on a second device: comments on the owner's own list.
-    @MainActor func testLiveAlerts2bOwnerCommentsFromSecondDevice() throws {
-        let app = try launchLiveSocial()
-        openArea(app, "Circle")
-        search(app, "Wishwell Owner")
-        tapLabel(app, ownerName, timeout: 30)
-        tapLabel(app, liveList, timeout: 20)
-        try postFreshComment(app)
-        attach(app, "Owner commented from second device")
-    }
-
-    /// Doesn't launch Wishwell: the alerts have to arrive while it's closed.
-    @MainActor func testLiveAlerts3OwnerReceivesAlertsWhileClosed() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("Push alerts need a signed device.")
-        #else
-        guard ProcessInfo.processInfo.environment["WISHWELL_LIVE_SOCIAL"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 to run live social checks.") }
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        springboard.activate()
-        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.005))
-        top.press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.7)))
-        for text in ["Someone followed you on Wishwell.", "Someone liked your wishlist.", "Someone commented on your wishlist."] {
-            let alert = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-            XCTAssertTrue(alert.waitForExistence(timeout: 120), "No push alert: \(text)")
-        }
-        let shot = XCTAttachment(screenshot: springboard.screenshot()); shot.name = "Owner push alerts"; shot.lifetime = .keepAlways; add(shot)
-        XCUIDevice.shared.press(.home)
-        #endif
     }
 
     @MainActor private func publishLiveList(_ app: XCUIApplication) {
@@ -258,40 +196,24 @@ final class WishwellUITests: XCTestCase {
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 30), "Publishing to development CloudKit did not finish")
     }
 
-    @MainActor private func postFreshComment(_ app: XCUIApplication) throws {
-        let editor = app.descendants(matching: .any).matching(identifier: "social.comment.text").firstMatch
-        if !editor.waitForExistence(timeout: 20) { attach(app, "No comment box") }
-        XCTAssertTrue(editor.exists)
-        if !editor.isHittable { app.swipeUp() }
-        let text = "Alert check \(Int(Date().timeIntervalSince1970))"
-        editor.tap(); editor.typeText(text)
-        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-        app.buttons["social.comment.post"].tap()
-        XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20))
-    }
-
-    @MainActor private func followLikeAndComment(_ app: XCUIApplication) {
+    /// Safe to rerun: only adds the owner and gets the wish when that hasn't happened yet. Ends on the wish.
+    @MainActor private func followAndGetWish(_ app: XCUIApplication) {
         openArea(app, "Circle")
         search(app, "Wishwell Owner")
         tapLabel(app, ownerName, timeout: 30)
-        // Safe to rerun: only switch Follow and Like on when they're off.
-        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
-        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
-        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
+        addToCircle(app)
         tapLabel(app, liveList, timeout: 20)
-        let like = app.buttons["social.like"]; XCTAssertTrue(like.waitForExistence(timeout: 20))
-        if !like.isHittable { app.swipeUp() }
-        XCTAssertTrue(waitForValue(like, notEqualTo: "Loading", timeout: 30), "Thread did not load")
-        if (like.value as? String) == "Not liked" { like.tap() }
-        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 20)); XCTAssertEqual(like.label, "1 like")
-        if !app.staticTexts["Live check comment"].exists {
-            let field = app.textFields["social.comment.text"]
-            let editor = field.exists ? field : app.textViews["social.comment.text"]
-            editor.tap(); editor.typeText("Live check comment")
-            if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-            app.buttons["social.comment.post"].tap()
+        tapLabel(app, "Live check wish", timeout: 20)
+        let get = app.buttons["claim.get"], undo = app.buttons["claim.undo"]
+        if !undo.waitForExistence(timeout: 10) { XCTAssertTrue(get.waitForExistence(timeout: 10)); get.tap() }
+        XCTAssertTrue(undo.waitForExistence(timeout: 20), "Getting the wish did not finish")
+    }
+    @MainActor private func addToCircle(_ app: XCUIApplication) {
+        let inCircle = app.descendants(matching: .any)["social.inCircle"]
+        if !inCircle.waitForExistence(timeout: 5) {
+            let add = app.buttons["social.follow"]; XCTAssertTrue(add.waitForExistence(timeout: 15)); add.tap()
         }
-        XCTAssertTrue(app.staticTexts["Live check comment"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(inCircle.waitForExistence(timeout: 20), "Adding to the circle did not finish")
     }
 
     @MainActor private func launchLiveSocial(personalLibrary: Bool = false, extra: [String] = []) throws -> XCUIApplication {
