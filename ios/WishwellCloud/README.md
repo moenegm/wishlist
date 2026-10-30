@@ -1,11 +1,11 @@
 # Wishwell iCloud conversion preview
 
-This is a separate iPhone/iPad app while the Rails-backed app in `../Wishwell` remains operational. Open `Wishwell.xcodeproj`, scheme `Wishwell`. The preview uses bundle ID `com.nujoomdigital.wishwell.icloudpreview` and displays as **Wishwell Preview**, so testing does not replace the existing app or its Keychain sessions.
+This is a separate iPhone/iPad app while the Rails-backed app in `../Wishwell` remains operational. Open `Wishwell.xcodeproj`, scheme `Wishwell`. It uses the original bundle ID `com.nujoomdigital.wishwell` and displays as **Wishwell**, so it ships as an update to the existing app. Installing it on a device replaces the Rails-backed build there.
 
 ## Storage
 
 - SwiftData maintains the local library; Apple's CloudKit mirroring handles private-database uploads, downloads, and offline changes.
-- Container: `iCloud.com.nujoomdigital.wishwell`. Enable iCloud/CloudKit and Push Notifications for the preview identifier in the developer account. Background remote notifications are declared.
+- Container: `iCloud.com.nujoomdigital.wishwell`. Enable iCloud/CloudKit and Push Notifications for the app identifier in the developer account. Background remote notifications are declared.
 - Every CloudKit model property has a default or is optional, relationships are optional and have inverses, and UUIDs do not use unsupported uniqueness constraints.
 - The local store URL is partitioned by a SHA-256 digest of the CloudKit user record ID. Account-change notifications close the displayed library; reopening verifies the matching identity. A device's unchanged iCloud Drive identity permits an offline reopen of an already verified account when the user record lookup fails specifically for network reasons. A new identity never inherits the previous account's cached store.
 - The optional on-device library has its own store with CloudKit explicitly disabled. It is not silently uploaded into an account later. Transfer via backup/import is an explicit action.
