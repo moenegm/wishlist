@@ -598,7 +598,8 @@ struct OwnListThread: View {
     @State private var recordID: String?
     var body: some View {
         Group { if let recordID { SocialThreadView(listID: recordID, wishID: wishID) } }
-            .task(id: list.publicRecordName) {
+            // Also reruns once the public account has loaded: a list opened right after launch would otherwise find none and stop.
+            .task(id: "\(list.publicRecordName ?? "")|\(social.me?.id ?? "")") {
                 guard social.enabled, social.me != nil else { recordID = nil; return }
                 if let id = list.publicRecordName { recordID = id; return }
                 recordID = try? await social.ownListRecord(source: list.id)?.id

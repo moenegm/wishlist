@@ -177,6 +177,9 @@ struct LibraryRoot: View {
                 do {
                     try await social.connect(); social.activityRows = try await social.activity()
                     if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--dump-social") { await dumpSocial() }
+                    #endif
                 }
                 catch { social.error = error.localizedDescription }
             }
@@ -211,6 +214,29 @@ struct LibraryRoot: View {
         } } }
         .alert("Wishwell", isPresented: Binding(get: { social.error != nil }, set: { if !$0 { social.error = nil } })) { Button("OK") { social.error = nil } } message: { Text(social.error ?? "") }
     }
+    #if DEBUG
+    /// Development only: prints what iCloud holds for this person's lists, to compare with what the screens show.
+    private func dumpSocial() async {
+        func line(_ text: String) { print("WISHWELL_DUMP: \(text)") }
+        line("me=\(social.me?.name ?? "none") actor=\(social.actorID ?? "?")")
+        for list in lists {
+            let record: String?
+            if let id = list.publicRecordName { record = id } else { record = try? await social.ownListRecord(source: list.id)?.id }
+            line("list '\(list.title)' local=\(list.id) record=\(record ?? "none") public=\(list.publicRecordName != nil)")
+            guard let record else { continue }
+            do {
+                let whole = try await social.thread(listID: record, wishID: nil)
+                line("  list-level: likes=\(whole.likeCount) comments=\(whole.comments.map(\.text)) paused=\(whole.paused)")
+                for wish in list.sortedWishes {
+                    let thread = try await social.thread(listID: record, wishID: wish.id)
+                    line("  wish '\(wish.title)' \(wish.id): likes=\(thread.likeCount) comments=\(thread.comments.map(\.text)) counts=\(whole.wishLikes[wish.id] ?? 0)/\(whole.wishComments[wish.id] ?? 0)")
+                }
+            } catch { line("  error: \(error)") }
+        }
+        line("activity: \(social.activityRows.map(\.message))")
+        line("done")
+    }
+    #endif
     private var unreadCount: Int {
         let read = Set(readState.map(\.id))
         return social.activityRows.filter { !read.contains($0.id) }.count
