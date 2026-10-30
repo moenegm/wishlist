@@ -363,18 +363,55 @@ struct PublicWishView: View {
     private let user = "demo-owner"
     private var rows: [String: SocialRow] = [:]
     init() {
-        let me = PublicProfile(id: "demo-you", ownerID: user, name: "You", photo: nil)
-        let friend = PublicProfile(id: "demo-friend-profile", ownerID: "demo-friend", name: "Tomas", photo: nil)
         let encoder = JSONEncoder()
-        for person in [me, friend] {
-            rows[person.id] = SocialRow(id: person.id, kind: .profile, creator: person.ownerID, searchTokens: PublicProfile.tokens(for: person.name), payload: (try? encoder.encode(person)) ?? Data())
+        func add(_ row: SocialRow) { rows[row.id] = row }
+        let me = PublicProfile(id: "demo-you", ownerID: user, name: "You", photo: nil)
+        add(SocialRow(id: me.id, kind: .profile, creator: user, searchTokens: PublicProfile.tokens(for: me.name), payload: (try? encoder.encode(me)) ?? Data()))
+        // Made-up people for trying the circle: everyone is in your circle and has you in theirs.
+        let people: [(id: String, name: String, hue: CGFloat, lists: [(String, String, [(String, [(String, String)])])])] = [
+            ("friend", "Tomas", 0.08, [("A cozy corner", "Home", [("Reading chair", [("Furniture shop", "129"), ("Second option", "149")]), ("Linen throw blanket", [("Home store", "45")])])]),
+            ("layla", "Layla Haddad", 0.92, [("Birthday", "Celebrations", [("Silver hoop earrings", [("Jewelry studio", "68")]), ("Pottery class for two", [("Clay studio", "120")]), ("Rose candle", [("Candle shop", "24")])]),
+                                             ("Kitchen", "Home", [("Stand mixer", [("Kitchen store", "349"), ("Online", "329")])])]),
+            ("omar", "Omar Saleh", 0.58, [("Running", "Sport", [("Trail running shoes", [("Sports shop", "140")]), ("Wireless earbuds", [("Electronics", "199")])])]),
+            ("nadia", "Nadia Karim", 0.35, [("Books to read", "Books", [("The Overstory", [("Bookshop", "18")]), ("Braiding Sweetgrass", [("Bookshop", "20")])]),
+                                             ("Garden", "Outdoors", [("Herb planter", [("Garden centre", "35")])])]),
+            ("yusuf", "Yusuf Amin", 0.75, [("Desk setup", "Work", [("Mechanical keyboard", [("Electronics", "110")]), ("Desk lamp", [("Lighting store", "60")])])]),
+        ]
+        var firstWish: [String: UUID] = [:]
+        for (index, person) in people.enumerated() {
+            let owner = "demo-\(person.id)"
+            let profile = PublicProfile(id: "demo-\(person.id)-profile", ownerID: owner, name: person.name, photo: Self.portrait(person.name, hue: person.hue))
+            add(SocialRow(id: profile.id, kind: .profile, creator: owner, searchTokens: PublicProfile.tokens(for: person.name), payload: (try? encoder.encode(profile)) ?? Data()))
+            add(SocialRow(id: "demo-follow-\(person.id)", kind: .follow, creator: user, parent: profile.id, payload: (try? encoder.encode(SocialAction())) ?? Data(), createdAt: Date().addingTimeInterval(-86_400)))
+            add(SocialRow(id: "demo-follows-you-\(person.id)", kind: .follow, creator: owner, parent: me.id, payload: (try? encoder.encode(SocialAction())) ?? Data(), createdAt: Date().addingTimeInterval(Double(-3600 * (index + 1)))))
+            for (listIndex, entry) in person.lists.enumerated() {
+                let list = WishList(title: entry.0, category: entry.1)
+                list.wishes = entry.2.compactMap { wish in try? Wish(title: wish.0, options: wish.1.map { ShoppingOption(location: $0.0, price: $0.1) }, list: list) }
+                let id = person.id == "friend" ? "demo-list" : "demo-\(person.id)-list-\(listIndex)"
+                let snapshot = PublicList(list: list, profile: profile, id: id)
+                if firstWish[person.id] == nil { firstWish[person.id] = snapshot.wishes.first?.id }
+                add(SocialRow(id: id, kind: .list, creator: owner, parent: profile.id, sourceID: snapshot.sourceID.uuidString, payload: (try? encoder.encode(snapshot)) ?? Data()))
+            }
         }
-        let list = WishList(title: "A cozy corner", category: "Home")
-        let chair = try? Wish(title: "Reading chair", options: [ShoppingOption(location: "Furniture shop", price: "129"), ShoppingOption(location: "Second option", price: "149")], list: list)
-        list.wishes = chair.map { [$0] } ?? []
-        let snapshot = PublicList(list: list, profile: friend, id: "demo-list")
-        rows[snapshot.id] = SocialRow(id: snapshot.id, kind: .list, creator: friend.ownerID, parent: friend.id, sourceID: snapshot.sourceID.uuidString, payload: (try? encoder.encode(snapshot)) ?? Data())
-        rows["demo-follow"] = SocialRow(id: "demo-follow", kind: .follow, creator: user, parent: friend.id, payload: (try? encoder.encode(SocialAction())) ?? Data(), createdAt: Date().addingTimeInterval(-3600))
+        // Omar is already getting Layla's earrings, so that wish shows as taken.
+        if let earrings = firstWish["layla"] {
+            add(SocialRow(id: "demo-claim-earrings", kind: .claim, creator: "demo-omar", parent: "demo-layla-list-0", payload: (try? encoder.encode(GiftClaim(wishID: earrings, active: true))) ?? Data()))
+        }
+    }
+    /// A soft coloured circle with initials, standing in for a profile photo.
+    private static func portrait(_ name: String, hue: CGFloat) -> Data? {
+        let size = CGSize(width: 300, height: 300)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(hue: hue, saturation: 0.35, brightness: 0.95, alpha: 1).cgColor, UIColor(hue: hue, saturation: 0.55, brightness: 0.75, alpha: 1).cgColor]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            }
+            let initials = name.split(separator: " ").compactMap(\.first).prefix(2).map(String.init).joined()
+            let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 110, weight: .semibold), .foregroundColor: UIColor.white]
+            let text = initials as NSString, textSize = text.size(withAttributes: attributes)
+            text.draw(at: CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2), withAttributes: attributes)
+        }
+        return image.jpegData(compressionQuality: 0.8)
     }
     func userID() async throws -> String { user }
     func record(_ id: String) async throws -> SocialRow? {

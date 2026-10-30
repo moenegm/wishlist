@@ -12,7 +12,7 @@ final class WishwellUITests: XCTestCase {
         let circle = app.buttons["Circle"]
         if circle.waitForExistence(timeout: 10) { circle.tap() }
         else { app.staticTexts["Circle"].firstMatch.tap() }
-        let person = app.buttons.matching(identifier: "circle.person").firstMatch
+        let person = app.buttons.matching(identifier: "circle.person").matching(NSPredicate(format: "label CONTAINS %@", "Tomas")).firstMatch
         guard person.waitForExistence(timeout: 10) else {
             let failure = XCTAttachment(screenshot: app.screenshot()); failure.lifetime = .keepAlways; add(failure)
             XCTFail("Circle grid missing: \(app.debugDescription)"); return
@@ -27,6 +27,12 @@ final class WishwellUITests: XCTestCase {
         let proof = XCTAttachment(screenshot: app.screenshot()); proof.name = "Getting a wish"; proof.lifetime = .keepAlways; add(proof)
         undo.tap()
         XCTAssertTrue(get.waitForExistence(timeout: 10))
+        // Someone else's claim shows as taken, with their name.
+        for _ in 0..<3 { app.navigationBars.buttons.firstMatch.tap() }
+        tapLabel(app, "Layla Haddad", timeout: 10)
+        tapLabel(app, "Birthday", timeout: 10)
+        XCTAssertTrue(labelled(app, "Omar Saleh is getting this").waitForExistence(timeout: 10))
+        let circleShot = XCTAttachment(screenshot: app.screenshot()); circleShot.name = "Someone else is getting it"; circleShot.lifetime = .keepAlways; add(circleShot)
     }
 
     @MainActor func testPrivateListPublishAndUnpublishInSocialPreview() throws {
