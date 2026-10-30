@@ -23,6 +23,10 @@ import Observation
     /// Last-known results, shown straight away while a fresh copy loads, so screens don't start empty.
     var followingOwners: Set<String>?
     var claimCache: [String: [UUID: ClaimState]] = [:]
+    /// This person's own claims from the last few minutes. iCloud's search can take several seconds to include
+    /// a new or changed claim, so a refresh in that window would otherwise undo what they just tapped.
+    private var recentClaims: [String: (on: Bool, at: Date)] = [:]
+    private var ownClaimRecords: [String: String] = [:]
     var listCache: [String: PublicList] = [:]
     var ownerListCache: [String: [PublicList]] = [:]
     var circleCache: [String: [PublicProfile]] = [:]
@@ -361,6 +365,10 @@ import Observation
             else if owner == user { states[claim.wishID] = .someone }
             else { states[claim.wishID] = .other(names[row.creator]?.name ?? "Someone") }
         }
+        for (key, change) in recentClaims where key.hasPrefix(listID + "|") && Date().timeIntervalSince(change.at) < 180 {
+            guard let wishID = UUID(uuidString: String(key.dropFirst(listID.count + 1))) else { continue }
+            if change.on { states[wishID] = .mine } else if states[wishID] == .mine { states[wishID] = nil }
+        }
         claimCache[listID] = states
         return states
     }
@@ -377,7 +385,17 @@ import Observation
         }
         try await ensureActor(user)
         // One record per person and wish: undoing keeps it, marked inactive, so the owner can be told it's open again.
-        let own = rows.filter { $0.row.creator == user }.map(\.row)
+        // The search can lag behind recent changes, so this person's own records are read again by name,
+        // which is always current. A record saved moments ago may not be in the search at all yet.
+        var names = Set(rows.filter { $0.row.creator == user }.map(\.row.id))
+        if let known = ownClaimRecords[listID + "|" + wishID.uuidString] { names.insert(known) }
+        var own: [SocialRow] = []
+        for name in names { if let row = try await fetch(name), row.creator == user { own.append(row) } }
+        if let first = own.first { ownClaimRecords[listID + "|" + wishID.uuidString] = first.id }
+        let active = own.contains { (try? $0.decode(GiftClaim.self))?.active == true }
+        recentClaims[listID + "|" + wishID.uuidString] = (on, Date())
+        // Nothing to change, so nothing is saved and nobody is notified twice.
+        if on == active { claimCache[listID, default: [:]][wishID] = on ? .mine : nil; return }
         if on, var first = own.first {
             first.payload = try encode(GiftClaim(wishID: wishID, active: true))
             let saved = try await database.save(first)
@@ -390,6 +408,7 @@ import Observation
             }
         } else {
             let saved = try await database.save(SocialRow(kind: .claim, parent: listID, payload: encode(GiftClaim(wishID: wishID, active: true))))
+            ownClaimRecords[listID + "|" + wishID.uuidString] = saved.id
             await didSave?(saved.id, nil)
         }
         var states = claimCache[listID] ?? [:]

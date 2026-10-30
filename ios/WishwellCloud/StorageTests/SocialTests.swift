@@ -209,6 +209,29 @@ final class SocialTests: XCTestCase {
         expectEqual(try await laila.claims(listID: id)[wishID], .mine)
     }
 
+    @MainActor func testAClaimJustMadeSurvivesARefreshAndTappingAgainSavesNothing() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
+        let friend = try await member(database)
+        var reports = 0
+        friend.didSave = { _, _ in reports += 1 }
+        // iCloud's search hasn't caught up with the claim yet.
+        database.laggingIndex = database.rows
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
+        expectEqual(try await friend.claims(listID: id)[wishID], .mine)
+        let writes = database.writes
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
+        expectEqual(database.writes, writes)
+        expectEqual(reports, 1)
+        // Undoing while the search still shows nothing works too, and is reported once.
+        try await friend.setClaim(listID: id, wishID: wishID, on: false)
+        expectNil(try await friend.claims(listID: id)[wishID])
+        expectEqual(reports, 2)
+        database.laggingIndex = nil
+        expectNil(try await friend.claims(listID: id)[wishID])
+    }
+
     @MainActor func testOnlyOwnerCanPublishAndUndoingOnlyAffectsYourOwnClaim() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
