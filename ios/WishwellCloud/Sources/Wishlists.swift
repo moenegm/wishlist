@@ -42,15 +42,18 @@ struct ListEditor: View {
     var existing: WishList?
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(SocialStore.self) private var social
     @State private var title = ""
     @State private var category = ""
+    @State private var isPublic = false
     @State private var error: String?
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Wishlist name", text: $title).accessibilityIdentifier("list.title")
                 TextField("Category (optional)", text: $category)
-                Section { Label(existing?.publicRecordName == nil ? "Private to you" : "Published to your circle", systemImage: existing?.publicRecordName == nil ? "lock" : "globe") } footer: { Text("New lists are always private. Manage publishing from the wishlist’s sharing menu.") }
+                // An existing list is switched from its own page.
+                if existing == nil { Section { PublicSwitch(isOn: $isPublic) } }
                 if let error { Text(error).foregroundStyle(.red) }
             }.navigationTitle(existing == nil ? "New wishlist" : "Edit wishlist")
                 .toolbar {
@@ -63,7 +66,12 @@ struct ListEditor: View {
         let list = existing ?? WishList(title: title)
         if existing == nil { context.insert(list) }
         list.title = title.trimmingCharacters(in: .whitespacesAndNewlines); list.category = category; list.updatedAt = Date()
-        do { try context.save(); dismiss() } catch { context.rollback(); self.error = error.localizedDescription }
+        do { try context.save(); dismiss() } catch { context.rollback(); self.error = error.localizedDescription; return }
+        // The list is saved first; sharing finishes in the background and reports a failure on the list page.
+        if existing == nil && isPublic {
+            let social = social, context = context
+            Task { do { try await social.setPublic(list, true, context: context) } catch { social.publicationMessage = "Your wishlist is saved but couldn’t be made public: \(error.localizedDescription)" } }
+        }
     }
 }
 
@@ -77,11 +85,14 @@ struct ListDetail: View {
     @State private var deleting = false
     @State private var error: String?
     @State private var showFulfilled = true
+    @State private var switching: Bool?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Label(list.publicRecordName == nil ? "Private wishlist" : "Published wishlist", systemImage: list.publicRecordName == nil ? "lock" : "globe").font(.caption).foregroundStyle(Theme.green)
                 Text(list.title).font(.system(.largeTitle, design: .serif))
+                PublicSwitch(isOn: Binding(get: { switching ?? (list.publicRecordName != nil) }, set: { setPublic($0) }), working: switching != nil)
+                    .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+                if let message = social.publicationMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 Toggle("Show fulfilled wishes", isOn: $showFulfilled)
                 if list.sortedWishes.isEmpty { ContentUnavailableView("Ready for a first wish", systemImage: "sparkles") }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16)], spacing: 16) {
@@ -89,12 +100,12 @@ struct ListDetail: View {
                         NavigationLink { WishDetail(wish: wish) } label: { WishTile(wish: wish) }.buttonStyle(.plain)
                     }
                 }
+                OwnListThread(list: list)
             }.padding(24).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
         }.background(Theme.background).navigationTitle("Wishlist").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 Button("Add a wish", systemImage: "plus") { adding = true }.accessibilityIdentifier("wish.add")
                 Menu {
-                    NavigationLink { ListSharingView(list: list) } label: { Label("Wishlist sharing", systemImage: "person.2") }
                     Button("Edit wishlist", systemImage: "pencil") { editing = true }
                     ShareLink(item: shareText) { Label("Share a text copy", systemImage: "square.and.arrow.up") }
                     Button("Delete wishlist", systemImage: "trash", role: .destructive) { deleting = true }.disabled(!(list.wishes ?? []).isEmpty)
@@ -107,7 +118,10 @@ struct ListDetail: View {
                     guard (list.wishes ?? []).isEmpty else { error = "Move or delete the wishes in this list first."; return }
                     Task {
                         do {
-                            if let id = list.publicRecordName { try await social.unpublish(id) }
+                            // Deleting a list also removes its public record, including one kept while the list was private.
+                            var record = list.publicRecordName
+                            if record == nil && social.enabled && social.me != nil { record = try await social.ownListRecord(source: list.id)?.id }
+                            if let record { try await social.unpublish(record) }
                             guard (list.wishes ?? []).isEmpty else { throw WishwellError("Move or delete the wishes in this list first.") }
                             context.delete(list); try context.save(); dismiss()
                         } catch { context.rollback(); self.error = error.localizedDescription }
@@ -115,6 +129,14 @@ struct ListDetail: View {
                 }
             }
             .alert("Couldn’t save", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+    }
+    private func setPublic(_ on: Bool) {
+        switching = on
+        Task {
+            do { try await social.setPublic(list, on, context: context); social.publicationMessage = nil }
+            catch { self.error = error.localizedDescription }
+            switching = nil
+        }
     }
     private var shareText: String {
         ([list.title] + list.sortedWishes.map { wish in
@@ -171,6 +193,7 @@ struct WishDetail: View {
                 } label: { Label(wish.fulfilled ? "Fulfilled" : "Mark fulfilled", systemImage: wish.fulfilled ? "checkmark.circle.fill" : "checkmark.circle") }
                     .buttonStyle(.bordered).accessibilityIdentifier("wish.fulfilled")
                 OptionRows(options: wish.options)
+                if let list = wish.list { OwnListThread(list: list, wishID: wish.id) }
             }.padding(24).frame(maxWidth: 800, alignment: .leading).frame(maxWidth: .infinity)
         }.background(wish.fulfilled ? Theme.sage.opacity(0.3) : Theme.background).navigationTitle("Wish").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -203,28 +226,28 @@ struct WishEditor: View {
     @FocusState private var focused: String?
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    TextField("What are you wishing for?", text: $title).textFieldStyle(.roundedBorder).focused($focused, equals: "title").accessibilityIdentifier("wish.title")
+            Form {
+                Section {
+                    TextField("What are you wishing for?", text: $title).focused($focused, equals: "title").accessibilityIdentifier("wish.title")
                     if existing != nil {
                         Picker("Wishlist", selection: $destination) {
                             ForEach(lists) { Text($0.title).tag(Optional($0.id)) }
                         }
                     }
-                    Text("Shopping options").font(.headline)
-                    Text("Compare up to three places to buy your wish.").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Section {
                     ForEach($options) { $option in
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(spacing: 12) {
                             TextField("Link or store", text: $option.location).focused($focused, equals: "location-\(option.id)").textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL).accessibilityIdentifier("option.location.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
-                            TextField("Price", text: $option.price).focused($focused, equals: "price-\(option.id)").keyboardType(.decimalPad).frame(width: 88).accessibilityIdentifier("option.price.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
-                            if options.count > 1 { Button("Remove option", systemImage: "minus.circle") { options.removeAll { $0.id == option.id } }.labelStyle(.iconOnly) }
-                        }.textFieldStyle(.roundedBorder)
+                            Divider()
+                            TextField("Price", text: $option.price).focused($focused, equals: "price-\(option.id)").keyboardType(.decimalPad).frame(width: 80).accessibilityIdentifier("option.price.\(options.firstIndex(where: { $0.id == option.id }) ?? 0)")
+                            if options.count > 1 { Button("Remove option", systemImage: "minus.circle.fill") { options.removeAll { $0.id == option.id } }.labelStyle(.iconOnly).foregroundStyle(.red).buttonStyle(.borderless) }
+                        }
                     }
                     if options.count < 3 { Button("Add an option", systemImage: "plus") { options.append(ShoppingOption()) }.accessibilityIdentifier("option.add") }
-                    Text("Prices are in USD.").font(.caption).foregroundStyle(.secondary)
-                    if let error { Text(error).foregroundStyle(.red) }
-                }.padding(24).frame(maxWidth: 700).frame(maxWidth: .infinity)
-            }.background(Theme.background).navigationTitle(existing == nil ? "New wish" : "Edit wish").navigationBarTitleDisplayMode(.inline)
+                } header: { Text("Shopping options") } footer: { Text("Compare up to three places to buy your wish. Prices are in USD.") }
+                if let error { Text(error).foregroundStyle(.red) }
+            }.navigationTitle(existing == nil ? "New wish" : "Edit wish")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("wish.save") }

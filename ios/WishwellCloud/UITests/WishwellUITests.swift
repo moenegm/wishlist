@@ -39,13 +39,10 @@ final class WishwellUITests: XCTestCase {
         let name = "Sharing check \(UUID().uuidString.prefix(5))"; title.typeText(name); app.buttons["list.save"].tap()
         let list = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
         XCTAssertTrue(list.waitForExistence(timeout: 5)); list.tap()
-        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
-        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 5)); publish.tap()
-        app.buttons["social.list.confirmPublish"].firstMatch.tap()
-        let makePrivate = app.buttons["social.list.private"]; XCTAssertTrue(makePrivate.waitForExistence(timeout: 5)); makePrivate.tap()
-        app.buttons["social.list.confirmPrivate"].firstMatch.tap()
-        XCTAssertTrue(publish.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Private wishlist"].exists)
+        let sharing = app.switches["list.public"]; XCTAssertTrue(sharing.waitForExistence(timeout: 5))
+        XCTAssertEqual(sharing.value as? String, "0")
+        flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 10), "The list did not become public")
+        flip(sharing); XCTAssertTrue(waitFor(sharing, value: "0", timeout: 10), "The list did not become private")
     }
 
     @MainActor func testCreateCloudSyncFixture() throws {
@@ -122,10 +119,8 @@ final class WishwellUITests: XCTestCase {
         attach(app, "Owner activity marked read")
         openArea(app, "My Lists")
         tapLabel(app, liveList)
-        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
-        let makePrivate = app.buttons["social.list.private"]; XCTAssertTrue(makePrivate.waitForExistence(timeout: 15)); makePrivate.tap()
-        app.buttons["social.list.confirmPrivate"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["social.list.publish"].waitForExistence(timeout: 30))
+        let sharing = app.switches["list.public"]; XCTAssertTrue(sharing.waitForExistence(timeout: 15))
+        flip(sharing); XCTAssertTrue(waitFor(sharing, value: "0", timeout: 30), "Making the list private did not finish")
         try removePublicProfile(app)
     }
 
@@ -255,10 +250,8 @@ final class WishwellUITests: XCTestCase {
         let price = app.textFields["option.price.0"]; price.tap(); price.typeText("10")
         if app.buttons["keyboard.done"].exists { app.buttons["keyboard.done"].tap() }
         app.buttons["wish.save"].tap()
-        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
-        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 10)); publish.tap()
-        app.buttons["social.list.confirmPublish"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["social.list.private"].waitForExistence(timeout: 30), "Publishing to development CloudKit did not finish")
+        let sharing = app.switches["list.public"]; XCTAssertTrue(sharing.waitForExistence(timeout: 10))
+        flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 30), "Publishing to development CloudKit did not finish")
     }
 
     @MainActor private func postFreshComment(_ app: XCUIApplication) throws {
@@ -344,17 +337,19 @@ final class WishwellUITests: XCTestCase {
     }
     @MainActor private func ensurePublicProfile(_ app: XCUIApplication, name: String) throws {
         openArea(app, "Settings")
-        let setup = app.buttons["Set up public profile"], edit = app.buttons["Edit public profile"]
-        scrollTo(app, setup.exists ? setup : edit)
-        guard setup.waitForExistence(timeout: 15) else { XCTAssertTrue(edit.exists, "Social is not enabled in this build"); return }
-        setup.tap()
-        let field = app.textFields["social.profile.name"]; XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap()
-        if let value = field.value as? String, !value.isEmpty, value != field.placeholderValue {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        let account = app.switches["profile.public"]
+        XCTAssertTrue(account.waitForExistence(timeout: 15), "Social is not enabled in this build")
+        let field = app.textFields["profile.name"]; XCTAssertTrue(field.waitForExistence(timeout: 5))
+        if (field.value as? String) != name {
+            field.tap()
+            if let value = field.value as? String, !value.isEmpty, value != field.placeholderValue {
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+            }
+            field.typeText(name + "\n")
         }
-        field.typeText(name)
-        app.buttons["social.profile.publish"].tap()
-        XCTAssertTrue(edit.waitForExistence(timeout: 30), "Publishing the profile did not finish")
+        if account.value as? String == "1" { return }
+        flip(account)
+        XCTAssertTrue(waitFor(account, value: "1", timeout: 30), "Turning on the public account did not finish")
     }
     @MainActor private func unblockEveryone(_ app: XCUIApplication) {
         openArea(app, "Settings")
@@ -364,11 +359,19 @@ final class WishwellUITests: XCTestCase {
     }
     @MainActor private func removePublicProfile(_ app: XCUIApplication) throws {
         openArea(app, "Settings")
-        let remove = app.buttons["social.profile.remove"]; scrollTo(app, remove)
-        XCTAssertTrue(remove.waitForExistence(timeout: 10)); remove.tap()
-        app.buttons["social.profile.confirmRemove"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["Set up public profile"].waitForExistence(timeout: 60), "Profile removal did not finish")
+        let account = app.switches["profile.public"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10)); flip(account)
+        app.buttons["profile.confirmPrivate"].firstMatch.tap()
+        XCTAssertTrue(waitFor(account, value: "0", timeout: 60), "Profile removal did not finish")
         attach(app, "Public profile removed")
+    }
+    /// Taps the switch itself; tapping the middle of a labelled switch can land on its label.
+    @MainActor private func flip(_ toggle: XCUIElement) {
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+    }
+    @MainActor private func waitFor(_ element: XCUIElement, value: String, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
     @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = name; image.lifetime = .keepAlways; add(image)

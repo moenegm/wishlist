@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 @main struct WishwellCloudApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var cloud = CloudStore()
+    @AppStorage(Appearance.key) private var appearance = Appearance.system.rawValue
     private var liveSocialCheck: Bool {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--social-live-check")
@@ -59,6 +60,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 }
             }
             .environment(cloud).tint(Theme.green)
+            .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
             .task {
                 #if DEBUG
                 let arguments = ProcessInfo.processInfo.arguments
@@ -122,6 +124,16 @@ struct LibraryRoot: View {
             }
         }
         .onChange(of: hidden.map(\.ownerID)) { _, values in social.hidden = Set(values) }
+        // New follows, likes and comments show up while the app is open, not only when it comes back to the front.
+        .task(id: phase) {
+            guard phase == .active else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, social.enabled, social.me != nil, !social.busy else { continue }
+                if let rows = try? await social.activity() { social.activityRows = rows }
+            }
+        }
+        .onChange(of: unreadCount) { _, count in UNUserNotificationCenter.current().setBadgeCount(count) }
         .task(id: publicationFingerprint) { await updatePublicCopies() }
         .onChange(of: phase) { _, value in if value == .active { Task {
             await updatePublicCopies()

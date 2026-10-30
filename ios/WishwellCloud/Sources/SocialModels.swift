@@ -94,6 +94,12 @@ struct PublicList: Codable, Identifiable, Hashable {
     func contains(_ wishID: UUID?) -> Bool { wishID == nil || wishes.contains { $0.id == wishID } }
 }
 
+/// What a public list record holds while its owner has made the list private.
+/// The record stays so likes and comments attached to it survive, but the list itself is no longer shared.
+struct PausedList: Codable {
+    var paused: Bool
+}
+
 struct SocialAction: Codable {
     var wishID: UUID?
     var text: String = ""
@@ -105,6 +111,8 @@ struct SocialComment: Identifiable {
     var createdAt: Date
 }
 struct SocialThread {
+    /// True when the list is private: the owner can read what was said, but nobody can like or comment.
+    var paused = false
     var liked = false
     var likeCount = 0
     var comments: [SocialComment] = []

@@ -15,6 +15,9 @@ import Observation
     var publicationMessage: String?
     var activityRows: [SocialActivity] = []
     var refreshRevision = 0
+    /// Lists made private on this device, by personal list ID. Reading a record by name is immediate,
+    /// while the query index can lag, so a quick private-then-public switch still finds the old record.
+    private var pausedRecords: [String: String] = [:]
     private var epoch = UUID()
     init(database: (any SocialDatabase)? = nil, enabled: Bool = Bundle.main.object(forInfoDictionaryKey: "WishwellSocialEnabled") as? Bool ?? false) {
         self.database = database ?? CloudSocialDatabase(); self.enabled = enabled
@@ -36,7 +39,7 @@ import Observation
         var wanted: Set<SocialAlert> = []
         if let me {
             wanted.insert(SocialAlert(kind: .follow, parent: me.id))
-            var lists = Set(try await fetchRows(SocialQuery(kind: .list, creator: user)).filter { $0.creator == user }.map(\.id))
+            var lists = Set(try await fetchRows(SocialQuery(kind: .list, creator: user)).filter { $0.creator == user && !Self.isPaused($0) }.map(\.id))
             if let published { lists.insert(published) }
             if let unpublished { lists.remove(unpublished) }
             for id in lists { wanted.insert(SocialAlert(kind: .like, parent: id)); wanted.insert(SocialAlert(kind: .comment, parent: id)) }
@@ -70,6 +73,7 @@ import Observation
         try await database.query(query).filter { !Self.isDiagnosticFixture($0.id) }
     }
     private func encode<T: Encodable>(_ value: T) throws -> Data { try JSONEncoder().encode(value) }
+    nonisolated static func isPaused(_ row: SocialRow) -> Bool { (try? row.decode(PausedList.self))?.paused == true }
     private func profileValue(_ row: SocialRow) throws -> PublicProfile {
         guard row.kind == .profile else { throw WishwellError("This profile is unavailable.") }
         var profile: PublicProfile = try row.decode()
@@ -111,7 +115,7 @@ import Observation
         }
     }
     func publicList(_ id: String) async throws -> PublicList? {
-        guard let row = try await fetch(id), row.kind == .list, !hidden.contains(row.creator),
+        guard let row = try await fetch(id), row.kind == .list, !Self.isPaused(row), !hidden.contains(row.creator),
               let parent = row.parent, let profileRow = try await fetch(parent), profileRow.kind == .profile,
               profileRow.creator == row.creator else { return nil }
         guard var list: PublicList = try? row.decode(), list.profileID == parent,
@@ -127,13 +131,26 @@ import Observation
         for row in rows where row.creator == owner { if let list = try await publicList(row.id) { lists.append(list) } }
         return lists.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
+    /// The current person's public record for a personal list, shared or paused.
+    func ownListRecord(source: UUID) async throws -> SocialRow? {
+        let user = try await actor()
+        return try await fetchRows(SocialQuery(kind: .list, creator: user, sourceID: source.uuidString))
+            .filter { $0.creator == user && $0.kind == .list }.sorted { $0.createdAt < $1.createdAt }.first
+    }
     func publish(_ snapshot: PublicList, existingID: String?) async throws -> String {
         let user = try await actor()
-        guard let me, me.ownerID == user, snapshot.ownerID == user, snapshot.profileID == me.id else { throw WishwellError("Publish your own profile before sharing a wishlist.") }
+        guard let me, me.ownerID == user, snapshot.ownerID == user, snapshot.profileID == me.id else { throw WishwellError("Turn on your public account before sharing a wishlist.") }
         let payload = try encode(snapshot)
         guard payload.count < 750_000 else { throw WishwellError("This wishlist is too large to publish as one shared list.") }
         var row: SocialRow
-        if let existingID {
+        // A list made private earlier keeps its record, so sharing it again brings back its likes and comments.
+        var reused: SocialRow?
+        if existingID == nil {
+            if let known = pausedRecords[snapshot.sourceID.uuidString], let row = try await fetch(known), row.creator == user, row.kind == .list { reused = row }
+            else { reused = try await ownListRecord(source: snapshot.sourceID) }
+        }
+        if let reused { row = reused }
+        else if let existingID {
             guard let existing = try await fetch(existingID) else { throw WishwellError("This wishlist was unpublished on another device. Refresh its sharing status before publishing it again.") }
             guard existing.creator == user, existing.kind == .list else { throw WishwellError("You can only publish your own wishlist.") }
             row = existing
@@ -143,9 +160,21 @@ import Observation
         row.payload = try encode(updated)
         try await ensureActor(user)
         let saved = try await database.save(row).id
-        // Only a new public list needs new subscriptions.
+        pausedRecords[snapshot.sourceID.uuidString] = nil
+        // Only a list that just became public needs new subscriptions.
         if existingID == nil { await refreshAlerts(published: saved) }
         return saved
+    }
+    /// Makes a shared list private without deleting it: its contents leave the public database,
+    /// while likes and comments stay attached for the owner and return if the list is shared again.
+    func pause(_ id: String) async throws {
+        let user = try await actor()
+        guard var row = try await fetch(id) else { return }
+        guard row.kind == .list, row.creator == user else { throw WishwellError("You can only change your own wishlist.") }
+        row.payload = try encode(PausedList(paused: true))
+        try await ensureActor(user); _ = try await database.save(row)
+        if let source = row.sourceID { pausedRecords[source] = id }
+        await refreshAlerts(unpublished: id)
     }
     func unpublish(_ id: String) async throws {
         let user = try await actor()
@@ -184,13 +213,25 @@ import Observation
         }
         try await ensureActor(user)
         if enabled {
-            guard me != nil else { throw WishwellError("Publish your profile before following people.") }
+            guard me != nil else { throw WishwellError("Turn on your public account before following people.") }
             if existing.isEmpty { _ = try await database.save(SocialRow(kind: .follow, parent: person.id, payload: encode(SocialAction()))) }
         } else { for row in existing { try await database.delete(row) } }
     }
     func thread(listID: String, wishID: UUID?) async throws -> SocialThread {
         let user = try await actor()
+        // The owner of a private list can still read what was said on it.
+        if let row = try await fetch(listID), row.kind == .list, row.creator == user, Self.isPaused(row) {
+            var thread = try await collectThread(listID: listID, wishID: wishID, user: user)
+            thread.paused = true; thread.liked = false
+            return thread
+        }
         guard let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("This shared wish is no longer available.") }
+        let thread = try await collectThread(listID: listID, wishID: wishID, user: user)
+        // Revalidate the parent after queries so an unpublished list isn't displayed from stale results.
+        guard try await publicList(listID) != nil else { throw WishwellError("This wishlist is no longer public.") }
+        return thread
+    }
+    private func collectThread(listID: String, wishID: UUID?, user: String) async throws -> SocialThread {
         let likes = try await fetchRows(SocialQuery(kind: .like, parent: listID))
         let comments = try await fetchRows(SocialQuery(kind: .comment, parent: listID))
         let validLikes = likes.filter {
@@ -206,13 +247,11 @@ import Observation
             }
         }
         thread.comments.sort { $0.createdAt < $1.createdAt }
-        // Revalidate the parent after queries so an unpublished list isn't displayed from stale results.
-        guard try await publicList(listID) != nil else { throw WishwellError("This wishlist is no longer public.") }
         return thread
     }
     func setLike(listID: String, wishID: UUID?, liked: Bool) async throws {
         let user = try await actor()
-        guard me != nil, let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("Publish a profile and open an available public wish first.") }
+        guard me != nil, let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("Turn on your public account and open an available public wish first.") }
         let rows = try await fetchRows(SocialQuery(kind: .like, creator: user, parent: listID))
         let own = rows.filter {
             guard $0.creator == user, $0.parent == listID else { return false }

@@ -32,7 +32,7 @@ enum AlertPermission {
         !social.isDemo && (!social.isLiveTest || ProcessInfo.processInfo.arguments.contains("--alerts"))
     }
     static func request() async {
-        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         if granted { UIApplication.shared.registerForRemoteNotifications() }
     }
     static func registerIfAllowed() async {
@@ -53,7 +53,6 @@ struct CircleView: View {
     @State private var lists: [PublicList] = []
     @State private var loading = false
     @State private var message: String?
-    @State private var profileEditor = false
     var body: some View {
         List {
             if social.isDemo { Text("Social simulator preview · No data leaves this device").font(.caption).foregroundStyle(.secondary) }
@@ -61,8 +60,7 @@ struct CircleView: View {
             if !social.enabled {
                 ContentUnavailableView("Your circle is being prepared", systemImage: "person.2", description: Text("CloudKit’s social permissions need to be configured before publishing. Your private library is ready to use."))
             } else if social.me == nil {
-                ContentUnavailableView("Let your friends find you", systemImage: "person.crop.circle.badge.plus", description: Text("Choose a public name and photo. Your wishlists stay private until you publish each one."))
-                Button("Set up public profile") { profileEditor = true }
+                ContentUnavailableView("Let your friends find you", systemImage: "person.crop.circle.badge.plus", description: Text("Turn on Public account in Settings to find people, follow them, and share wishlists. Each wishlist stays private until you make it public."))
             } else {
                 Section {
                     Picker("Your circle", selection: $group) {
@@ -84,7 +82,6 @@ struct CircleView: View {
                 }
             }
         }.navigationTitle("Your circle").searchable(text: $query, prompt: "Find people by name")
-            .sheet(isPresented: $profileEditor) { PublicProfileEditor() }
             .task(id: "\(query):\(group):\(social.me?.id ?? "")") {
                 do { try await Task.sleep(for: .milliseconds(250)); try Task.checkCancellation(); await load() } catch {}
             }.refreshable { await load() }
@@ -135,33 +132,6 @@ struct PublicListRow: View {
     }
 }
 
-struct PublicProfileEditor: View {
-    @Environment(SocialStore.self) private var social
-    @Environment(\.dismiss) private var dismiss
-    @Query(sort: \LocalProfile.createdAt) private var profiles: [LocalProfile]
-    @State private var name = ""
-    @State private var includePhoto = true
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Public profile") {
-                    TextField("Your public name", text: $name).accessibilityIdentifier("social.profile.name")
-                    Toggle("Include my profile photo", isOn: $includePhoto)
-                }
-                Section { Text("Your name and chosen photo will be visible to people using Wishwell. No email address or Apple account details are published. Each wishlist remains private until you explicitly publish it.").font(.footnote) }
-            }.navigationTitle("Public profile").toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(social.busy) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Publish") { Task { await social.perform {
-                        try await social.saveProfile(name: name, photo: includePhoto ? profiles.first?.photo : nil); dismiss()
-                        if AlertPermission.allowed(for: social) { await AlertPermission.request() }
-                    } } }.disabled(social.busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("social.profile.publish")
-                }
-            }.onAppear { name = social.me?.name ?? profiles.first?.displayName ?? "" }
-        }.interactiveDismissDisabled(social.busy)
-    }
-}
-
 struct PublicPersonView: View {
     let person: PublicProfile
     @Environment(SocialStore.self) private var social
@@ -177,7 +147,12 @@ struct PublicPersonView: View {
             Section { PersonRow(person: person) }
             if person.ownerID != social.actorID {
                 Button(followed ? "Unfollow" : "Follow", systemImage: followed ? "person.badge.minus" : "person.badge.plus") {
-                    Task { await social.perform { try await social.follow(person, enabled: !followed); await load() } }
+                    // The button flips right away; it only flips back if saving fails.
+                    let wanted = !followed; followed = wanted
+                    Task {
+                        await social.perform { try await social.follow(person, enabled: wanted) }
+                        if social.error != nil { followed = !wanted }
+                    }
                 }.disabled(social.busy).accessibilityIdentifier("social.follow")
             }
             if let message { Text(message).foregroundStyle(.secondary) }
@@ -296,7 +271,7 @@ struct SocialThreadView: View {
                 Task { await social.perform { try await social.setLike(listID: listID, wishID: wishID, liked: !thread.liked); await load() } }
             } label: { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
                 // Toggling before the thread loads would act on a placeholder state.
-                .disabled(social.busy || social.me == nil || !loaded)
+                .disabled(social.busy || social.me == nil || !loaded || thread.paused)
                 .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
                 .accessibilityIdentifier("social.like")
             Text("Comments").font(.system(.title2, design: .serif))
@@ -315,7 +290,9 @@ struct SocialThreadView: View {
                 }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 16))
             }
             if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
-            if social.me != nil {
+            if thread.paused {
+                Text("Comments are paused while this list is private.").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("social.thread.paused")
+            } else if social.me != nil {
                 HStack(alignment: .bottom) {
                     TextField("Write a comment…", text: $bodyText, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).focused($writing).accessibilityIdentifier("social.comment.text")
                     Button("Post", systemImage: "arrow.up.circle.fill") {
@@ -323,7 +300,7 @@ struct SocialThreadView: View {
                     }.labelStyle(.iconOnly).disabled(social.busy || bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || bodyText.count > 500).accessibilityIdentifier("social.comment.post")
                 }
                 Text("\(bodyText.count)/500").font(.caption2).foregroundStyle(.secondary)
-            } else { Text("Publish a profile in Settings to join the conversation.").font(.caption).foregroundStyle(.secondary) }
+            } else { Text("Turn on Public account in Settings to join the conversation.").font(.caption).foregroundStyle(.secondary) }
         }.task(id: social.refreshRevision) { await load() }
             .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("Done") { writing = false }.accessibilityIdentifier("social.keyboard.done") } }
             .confirmationDialog("Delete your comment?", isPresented: Binding(get: { deleteID != nil }, set: { if !$0 { deleteID = nil } }), titleVisibility: .visible) {
@@ -426,20 +403,23 @@ struct ActivityView: View {
             if rows.isEmpty { ContentUnavailableView("You’re all caught up", systemImage: "bell", description: Text("Follows, likes, comments, and new public wishes from your circle appear here.")) }
             ForEach(rows) { row in
                 Group {
-                    if let list = row.list { NavigationLink { PublicListView(id: list.id) } label: { activityRow(row) } }
-                    else { NavigationLink { PublicPersonView(person: row.actor) } label: { activityRow(row) } }
+                    if let list = row.list { NavigationLink { PublicListView(id: list.id).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else { NavigationLink { PublicPersonView(person: row.actor).onAppear { markRead([row]) } } label: { activityRow(row) } }
                 }.accessibilityValue(readState.contains { $0.id == row.id } ? "Read" : "Unread")
             }
         }.navigationTitle("Notifications")
-            .toolbar { Button("Mark shown as read") { markRead() }.disabled(rows.isEmpty).accessibilityIdentifier("social.activity.markRead") }
+            .onChange(of: social.activityRows.map(\.id)) { _, _ in rows = social.activityRows }
+            .toolbar { Button("Mark shown as read") { markRead(rows) }.disabled(rows.isEmpty).accessibilityIdentifier("social.activity.markRead") }
             .task { await load() }.refreshable { await load() }
             .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
     }
     private func activityRow(_ row: SocialActivity) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: row.icon).foregroundStyle(Theme.green)
+        let read = readState.contains { $0.id == row.id }
+        return HStack(alignment: .top, spacing: 14) {
+            Circle().fill(read ? Color.clear : Theme.green).frame(width: 8, height: 8).padding(.top, 6)
+            Image(systemName: row.icon).foregroundStyle(read ? Color.secondary : Theme.green)
             VStack(alignment: .leading, spacing: 6) {
-                Text(row.message).fontWeight(readState.contains { $0.id == row.id } ? .regular : .semibold)
+                Text(row.message).fontWeight(read ? .regular : .semibold).foregroundStyle(read ? .secondary : .primary)
                 Text(row.date, style: .relative).font(.caption).foregroundStyle(.secondary)
             }
         }.padding(.vertical, 6)
@@ -449,66 +429,65 @@ struct ActivityView: View {
         do { rows = try await social.activity(); social.activityRows = rows; message = nil }
         catch { rows = []; message = error.localizedDescription }
     }
-    private func markRead() {
+    private func markRead(_ shown: [SocialActivity]) {
         let existing = Set(readState.map(\.id))
-        for row in rows where !existing.contains(row.id) { context.insert(SocialReadState(id: row.id)) }
+        let fresh = shown.filter { !existing.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        for row in fresh { context.insert(SocialReadState(id: row.id)) }
         do { try context.save() } catch { context.rollback(); social.error = error.localizedDescription }
     }
 }
 
-struct ListSharingView: View {
-    let list: WishList
-    @Environment(SocialStore.self) private var social
-    @Environment(\.modelContext) private var context
-    @State private var confirmingPublish = false
-    @State private var confirmingPrivate = false
-    @State private var profileEditor = false
-    @State private var message: String?
-    var body: some View {
-        Form {
-            Section {
-                Label(list.publicRecordName == nil ? "Private wishlist" : "Published wishlist", systemImage: list.publicRecordName == nil ? "lock" : "globe")
-                Text("Only wishlists you explicitly publish are shared with your circle. Changes to a published list are uploaded while Wishwell is open.").font(.footnote)
-            }
-            if !social.enabled { Text("Public sharing is awaiting CloudKit permission setup.") }
-            else if social.me == nil { Button("Set up public profile") { profileEditor = true } }
-            else if let id = list.publicRecordName {
-                NavigationLink("View public wishlist") { PublicListView(id: id) }
-                Button("Update public copy") { Task { await upload() } }.disabled(social.busy)
-                Button("Make private", role: .destructive) { confirmingPrivate = true }.disabled(social.busy).accessibilityIdentifier("social.list.private")
-            } else { Button("Publish wishlist") { confirmingPublish = true }.disabled(social.busy).accessibilityIdentifier("social.list.publish") }
-            if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-        }.navigationTitle("Wishlist sharing").navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $profileEditor) { PublicProfileEditor() }
-            .confirmationDialog("Publish this wishlist?", isPresented: $confirmingPublish, titleVisibility: .visible) {
-                Button("Publish wishlist") { Task { await upload() } }.accessibilityIdentifier("social.list.confirmPublish")
-            } message: { Text("Your list, wishes, prices, and fulfilled status will be public. Anyone can copy shared content. Making it private later requires an internet connection.") }
-            .confirmationDialog("Make this wishlist private?", isPresented: $confirmingPrivate, titleVisibility: .visible) {
-                Button("Make private", role: .destructive) {
-                    Task { await social.perform {
-                        if let id = list.publicRecordName { try await social.unpublish(id) }
-                        list.publicRecordName = nil
-                        do { try context.save() } catch { context.rollback(); throw error }
-                        message = "The public copy was removed. Other people’s saved copies can’t be recalled."
-                    } }
-                }.accessibilityIdentifier("social.list.confirmPrivate")
-            } message: { Text("The public copy and its dependent interactions will be removed. Your personal list stays intact. Removal of dependent interactions may take a moment.") }
-            .task {
-                if social.enabled, let id = list.publicRecordName {
-                    do { if try await social.publicList(id) == nil { list.publicRecordName = nil; try context.save() } }
-                    catch { message = error.localizedDescription }
-                }
-            }
-    }
-    private func upload() async {
-        await social.perform {
-            guard let me = social.me else { throw WishwellError("Set up your public profile first.") }
+extension SocialStore {
+    /// Makes a personal wishlist public or private. Private keeps the public record, so likes and comments return when it's shared again.
+    func setPublic(_ list: WishList, _ on: Bool, context: ModelContext) async throws {
+        if on {
+            guard let me else { throw WishwellError("Turn on your public account in Settings to share wishlists.") }
             let snapshot = PublicList(list: list, profile: me, id: list.publicRecordName ?? UUID().uuidString)
-            let id = try await social.publish(snapshot, existingID: list.publicRecordName)
-            list.publicRecordName = id
-            do { try context.save() } catch { context.rollback(); throw error }
-            message = "Your public copy is up to date."
+            list.publicRecordName = try await publish(snapshot, existingID: list.publicRecordName)
+        } else {
+            if let id = list.publicRecordName { try await pause(id) }
+            list.publicRecordName = nil
         }
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+}
+
+/// The public/private switch shown on a wishlist and when creating one.
+struct PublicSwitch: View {
+    @Binding var isOn: Bool
+    var working = false
+    @Environment(SocialStore.self) private var social
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $isOn) {
+                HStack(spacing: 8) {
+                    Label(isOn ? "Public" : "Private", systemImage: isOn ? "globe" : "lock")
+                    if working { ProgressView().controlSize(.small) }
+                }
+            }.tint(Theme.green).disabled(working || social.busy || !social.enabled || social.me == nil).accessibilityIdentifier("list.public")
+            Text(note).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+    private var note: String {
+        if !social.enabled || social.me == nil { return "Turn on Public account in Settings to share wishlists." }
+        return isOn ? "People using Wishwell can see this list, its wishes and prices, and like or comment on it." : "Only you can see this list."
+    }
+}
+
+/// Likes and comments on one of the current person's own lists, found whether the list is public or private.
+struct OwnListThread: View {
+    let list: WishList
+    var wishID: UUID?
+    @Environment(SocialStore.self) private var social
+    @State private var recordID: String?
+    var body: some View {
+        Group { if let recordID { SocialThreadView(listID: recordID, wishID: wishID) } }
+            .task(id: list.publicRecordName) {
+                guard social.enabled, social.me != nil else { recordID = nil; return }
+                if let id = list.publicRecordName { recordID = id; return }
+                recordID = try? await social.ownListRecord(source: list.id)?.id
+            }
     }
 }
 

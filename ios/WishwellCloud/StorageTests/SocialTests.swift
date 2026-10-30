@@ -233,6 +233,47 @@ final class SocialTests: XCTestCase {
         await rejects { try await friend.comment(listID: id, wishID: nil, text: "Too late") }
     }
 
+    @MainActor func testMakingAListPrivateKeepsItsLikesAndCommentsForTheOwner() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let friend = try await member(database)
+        try await friend.comment(listID: id, wishID: nil, text: "Lovely list")
+        try await friend.setLike(listID: id, wishID: nil, liked: true)
+        database.user = "owner"
+        try await owner.pause(id)
+        // Nothing of the list itself stays public.
+        let paused = try unwrap(database.rows[id])
+        XCTAssertFalse(String(decoding: paused.payload, as: UTF8.self).contains("Private room"))
+        expectTrue(try await owner.lists(owner: "owner").isEmpty)
+        // The owner still reads what was said, but nobody can add to it.
+        let ownerView = try await owner.thread(listID: id, wishID: nil)
+        expectTrue(ownerView.paused)
+        expectEqual(ownerView.comments.map(\.text), ["Lovely list"])
+        expectEqual(ownerView.likeCount, 1)
+        await rejects { try await owner.comment(listID: id, wishID: nil, text: "My own note") }
+        database.user = "friend"
+        expectNil(try await friend.publicList(id))
+        await rejects { _ = try await friend.thread(listID: id, wishID: nil) }
+        await rejects { try await friend.comment(listID: id, wishID: nil, text: "Still here?") }
+        await rejects { try await friend.setLike(listID: id, wishID: nil, liked: false) }
+        // Sharing it again reuses the same record, so everything comes back.
+        database.user = "owner"
+        expectEqual(try await owner.publish(snapshot, existingID: nil), id)
+        let restored = try await owner.thread(listID: id, wishID: nil)
+        XCTAssertFalse(restored.paused)
+        expectEqual(restored.comments.map(\.text), ["Lovely list"])
+        expectEqual(try await owner.lists(owner: "owner").map(\.id), [id])
+    }
+
+    @MainActor func testAQuickPrivateThenPublicSwitchFindsTheRecordBeforeTheIndexCatchesUp() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        database.laggingIndex = [:]
+        let id = try await owner.publish(snapshot, existingID: nil)
+        try await owner.pause(id)
+        expectEqual(try await owner.publish(snapshot, existingID: nil), id)
+        expectEqual(database.rows.values.filter { $0.kind == .list }.count, 1)
+    }
+
     @MainActor func testBlockedAuthorsAreHiddenFromDiscoveryThreadsAndActivity() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)
