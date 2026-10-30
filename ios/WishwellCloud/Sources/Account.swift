@@ -84,6 +84,11 @@ struct SettingsView: View {
             Section("About this preview") {
                 Text("Personal wishes are stored on your device and, when connected, in your private iCloud database. Only profiles and wishlists you explicitly publish enter the public social database.").font(.footnote)
             }
+            Section("Help") {
+                Link(destination: URL(string: "mailto:contact@nujoomdigital.com?subject=Wishwell%20feedback")!) { Label("Send feedback", systemImage: "envelope") }
+                Link(destination: URL(string: "https://nujoomdigital.com/wishwell/support")!) { Label("Wishwell support", systemImage: "questionmark.circle") }
+                Link(destination: URL(string: "https://nujoomdigital.com/privacy#wishwell")!) { Label("Privacy policy", systemImage: "hand.raised") }
+            }
         }.navigationTitle("Settings")
             .onAppear { name = profiles.first?.displayName ?? "" }
             .onChange(of: profiles.first?.displayName) { _, value in name = value ?? "" }

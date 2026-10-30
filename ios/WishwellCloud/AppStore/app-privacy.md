@@ -1,6 +1,6 @@
 # App Store privacy answers
 
-Answers for App Store Connect > App Privacy, based on how Wishwell works today. Recheck them if push notifications, analytics or any third-party service are added.
+Answers for App Store Connect > App Privacy, based on how Wishwell works today. Recheck them if analytics or any third-party service is added. Push alerts carry generic text only and don't change these answers.
 
 ## Does the app collect data?
 
@@ -22,7 +22,9 @@ Not collected: email, phone, address, location, contacts, browsing history, sear
 
 No. There are no ads, analytics or data brokers.
 
-## Links needed before submission
+## Links
 
-- Privacy policy URL: host `privacy-policy.md` once [DATE] and [SUPPORT EMAIL] are filled in.
-- Support URL: a page with the support email and how to remove a public profile.
+- Privacy policy URL: https://nujoomdigital.com/privacy (Wishwell section: #wishwell)
+- Support URL: https://nujoomdigital.com/wishwell/support
+- Marketing URL: leave empty
+- Contact: contact@nujoomdigital.com
