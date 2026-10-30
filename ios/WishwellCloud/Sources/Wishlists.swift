@@ -121,15 +121,22 @@ struct ListDetail: View {
             .sheet(isPresented: $editing) { ListEditor(existing: list) }
             .confirmationDialog(deleteTitle, isPresented: $deleting, titleVisibility: .visible) {
                 Button("Delete wishlist", role: .destructive) {
+                    let known = list.publicRecordName, source = list.id, wishes = (list.wishes ?? []).map(\.id)
+                    // Gone from this phone at once; its wishes go with it.
+                    context.delete(list)
+                    do { try context.save() } catch { context.rollback(); self.error = error.localizedDescription; return }
+                    dismiss()
+                    // Then its public record goes too, including one kept while the list was private.
+                    let social = social
                     Task {
                         do {
-                            // Deleting a list also removes its public record, including one kept while the list was private.
-                            var record = list.publicRecordName
-                            if record == nil && social.enabled && social.me != nil { record = try await social.ownListRecord(source: list.id)?.id }
-                            if let record { try await social.unpublish(record) }
-                            // Its wishes go with it.
-                            context.delete(list); try context.save(); dismiss()
-                        } catch { context.rollback(); self.error = error.localizedDescription }
+                            var record = known
+                            if record == nil && social.enabled && social.me != nil { record = try await social.ownListRecord(source: source)?.id }
+                            guard let record else { return }
+                            // Anyone getting one of these wishes is noted first, so they can be told once it's gone.
+                            if !social.isDemo { await PushService.reportRemoval(list: record, wishes: wishes) }
+                            try await social.unpublish(record)
+                        } catch { social.publicationMessage = "The list was deleted here, but its shared copy needs attention: \(error.localizedDescription)" }
                     }
                 }.accessibilityIdentifier("list.confirmDelete")
             } message: { Text(list.publicRecordName == nil ? "This can’t be undone." : "This can’t be undone. It’s also removed from your circle, along with anything people marked as getting.") }
@@ -209,7 +216,12 @@ struct WishDetail: View {
                 Text(wish.title).font(.system(size: 36, design: .serif))
                 Button {
                     wish.fulfilled.toggle(); wish.updatedAt = Date()
-                    do { try context.save() } catch { context.rollback(); self.error = error.localizedDescription }
+                    do { try context.save() } catch { context.rollback(); self.error = error.localizedDescription; return }
+                    // Someone getting it hears that it's already been got, once the shared copy shows it.
+                    if wish.fulfilled, !social.isDemo, let record = wish.list?.publicRecordName {
+                        let id = wish.id
+                        Task { await PushService.reportRemoval(list: record, wishes: [id]) }
+                    }
                 } label: { Label(wish.fulfilled ? "Fulfilled" : "Mark fulfilled", systemImage: wish.fulfilled ? "checkmark.circle.fill" : "checkmark.circle") }
                     .buttonStyle(.bordered).accessibilityIdentifier("wish.fulfilled")
                 OptionRows(options: wish.options)
@@ -225,6 +237,10 @@ struct WishDetail: View {
             .sheet(isPresented: $editing) { if let list = wish.list { WishEditor(list: list, existing: wish) } }
             .confirmationDialog("Delete this wish?", isPresented: $deleting, titleVisibility: .visible) {
                 Button("Delete wish", role: .destructive) {
+                    if !social.isDemo, let record = wish.list?.publicRecordName {
+                        let id = wish.id
+                        Task { await PushService.reportRemoval(list: record, wishes: [id]) }
+                    }
                     context.delete(wish)
                     do { try context.save(); dismiss() } catch { context.rollback(); self.error = error.localizedDescription }
                 }
@@ -236,6 +252,7 @@ struct WishDetail: View {
 struct WishEditor: View {
     let list: WishList
     var existing: Wish?
+    @Environment(SocialStore.self) private var social
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \WishList.createdAt) private var lists: [WishList]
@@ -282,7 +299,13 @@ struct WishEditor: View {
             let target = lists.first(where: { $0.id == destination }) ?? list
             if let existing {
                 existing.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                existing.optionsData = try JSONEncoder().encode(validated); existing.updatedAt = Date(); existing.list = target
+                existing.optionsData = try JSONEncoder().encode(validated); existing.updatedAt = Date()
+                // Moving a wish off a shared list counts as removing it there.
+                if target.id != list.id, !social.isDemo, let record = list.publicRecordName {
+                    let id = existing.id
+                    Task { await PushService.reportRemoval(list: record, wishes: [id]) }
+                }
+                existing.list = target
             } else {
                 context.insert(try Wish(title: title.trimmingCharacters(in: .whitespacesAndNewlines), options: validated, list: target))
             }

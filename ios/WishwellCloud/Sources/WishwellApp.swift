@@ -65,6 +65,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
         await send("devices", method: "DELETE", ["token": token])
     }
+    /// Called just before wishes leave a shared list (deleted, or the whole list deleted) or after one is marked
+    /// fulfilled, while the website can still see who was getting them. It tells them once the change is confirmed.
+    static func reportRemoval(list: String, wishes: [UUID]) async {
+        guard !wishes.isEmpty else { return }
+        var request = URLRequest(url: base.appending(path: "removals"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["list": list, "environment": environment, "wishes": wishes.map(\.uuidString)])
+        request.timeoutInterval = 10
+        do { _ = try await URLSession.shared.data(for: request) } catch { print("Wishwell push removals failed: \(error.localizedDescription)") }
+    }
     static func report(record: String, profile: String?) async {
         var body = ["record": record, "environment": environment]
         if let profile { body["profile"] = profile }
@@ -238,7 +249,7 @@ struct LibraryRoot: View {
             if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
                 do {
-                    social.didSave = { record, profile in await PushService.report(record: record, profile: profile) }
+                    if !social.isDemo { social.didSave = { record, profile in await PushService.report(record: record, profile: profile) } }
                     await showDeliveredNotifications()
                     try await social.connect()
                     Task { await social.warmCircle() }
