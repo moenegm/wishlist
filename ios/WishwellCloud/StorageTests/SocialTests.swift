@@ -7,6 +7,10 @@ import XCTest
     var writes = 0
     var keepOrphans = false
     var afterQuery: (() -> Void)?
+    var alerts: [String: Set<String>] = [:]
+    func alertSubscriptionIDs() async throws -> Set<String> { alerts[user] ?? [] }
+    func subscribeAlert(_ alert: SocialAlert) async throws { alerts[user, default: []].insert(alert.id) }
+    func unsubscribeAlert(_ id: String) async throws { alerts[user]?.remove(id) }
     func userID() async throws -> String { user }
     func record(_ id: String) async throws -> SocialRow? {
         guard let row = rows[id] else { return nil }
@@ -89,6 +93,23 @@ final class SocialTests: XCTestCase {
         let found = try await owner.search("wishwell"); expectEqual(found.count, 0)
         let list = try await owner.publicList(fixtureList.id); expectNil(list)
         let lists = try await owner.lists(owner: "owner"); expectEqual(lists.count, 0)
+    }
+
+    @MainActor func testAlertsFollowProfileAndPublishedListsOnly() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        try await owner.syncAlerts()
+        let me = try unwrap(owner.me)
+        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
+        let listID = try await owner.publish(snapshot, existingID: nil)
+        try await owner.syncAlerts()
+        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .like, parent: listID).id, SocialAlert(kind: .comment, parent: listID).id]))
+        database.alerts["owner"]?.insert("someone-elses-subscription")
+        try await owner.unpublish(listID)
+        try await owner.syncAlerts()
+        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id, "someone-elses-subscription"])
+        try await owner.removeProfile()
+        try await owner.syncAlerts()
+        expectEqual(database.alerts["owner"], ["someone-elses-subscription"])
     }
 
     @MainActor func testSearchMatchesEveryTypedWord() async throws {

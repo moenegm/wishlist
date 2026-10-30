@@ -26,6 +26,21 @@ import Observation
         guard attempt == epoch else { throw CancellationError() }
         actorID = user
         me = try await profile(owner: user)
+        try? await syncAlerts()
+    }
+    /// Keeps push subscriptions in step with the current profile and published lists.
+    func syncAlerts() async throws {
+        let user = try await actor()
+        var wanted: Set<SocialAlert> = []
+        if let me {
+            wanted.insert(SocialAlert(kind: .follow, parent: me.id))
+            for row in try await fetchRows(SocialQuery(kind: .list, creator: user)) where row.creator == user {
+                wanted.insert(SocialAlert(kind: .like, parent: row.id)); wanted.insert(SocialAlert(kind: .comment, parent: row.id))
+            }
+        }
+        let existing = try await database.alertSubscriptionIDs().filter { $0.hasPrefix(SocialAlert.prefix) }
+        for id in existing.subtracting(wanted.map(\.id)) { try await database.unsubscribeAlert(id) }
+        for alert in wanted where !existing.contains(alert.id) { try await database.subscribeAlert(alert) }
     }
     func reset() { epoch = UUID(); actorID = nil; me = nil; hidden = []; activityRows = [] }
     private func actor() async throws -> String {
@@ -73,6 +88,7 @@ import Observation
         row.searchTokens = PublicProfile.tokens(for: trimmed)
         try await ensureActor(user)
         me = try profileValue(await database.save(row))
+        try? await syncAlerts()
     }
     func search(_ text: String) async throws -> [PublicProfile] {
         _ = try await actor()
@@ -119,13 +135,17 @@ import Observation
         var updated = snapshot; updated.id = row.id
         row.payload = try encode(updated)
         try await ensureActor(user)
-        return try await database.save(row).id
+        let saved = try await database.save(row).id
+        // Only a new public list needs new subscriptions.
+        if existingID == nil { try? await syncAlerts() }
+        return saved
     }
     func unpublish(_ id: String) async throws {
         let user = try await actor()
         guard let row = try await fetch(id) else { return }
         guard row.kind == .list, row.creator == user else { throw WishwellError("You can only unpublish your own wishlist.") }
         try await ensureActor(user); try await database.delete(row)
+        try? await syncAlerts()
     }
     func following() async throws -> [PublicProfile] {
         let user = try await actor()
@@ -229,6 +249,7 @@ import Observation
         for row in lists where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         for row in profiles where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         me = nil
+        try? await syncAlerts()
     }
     func activity() async throws -> [SocialActivity] {
         let user = try await actor()

@@ -89,7 +89,10 @@ struct LibraryRoot: View {
             social.hidden = Set(hidden.map(\.ownerID))
             if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
-                do { try await social.connect(); social.activityRows = try await social.activity() }
+                do {
+                    try await social.connect(); social.activityRows = try await social.activity()
+                    if social.me != nil && !social.isLiveTest { await AlertPermission.registerIfAllowed() }
+                }
                 catch { social.error = error.localizedDescription }
             }
         }

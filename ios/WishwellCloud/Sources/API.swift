@@ -94,3 +94,31 @@ import CryptoKit
         } catch { self.error = error.localizedDescription; syncMessage = "Library unavailable" }
     }
 }
+
+#if DEBUG
+extension CloudStore {
+    /// Development only: creates every record type and field for the SwiftData models in the private database.
+    /// Uses a throwaway store, so the personal library is never opened.
+    static func initializeCloudKitSchema() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "schema-\(UUID().uuidString).store")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try autoreleasepool {
+            let description = NSPersistentStoreDescription(url: url)
+            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(containerIdentifier: containerID)
+            description.shouldAddStoreAsynchronously = false
+            guard let model = NSManagedObjectModel.makeManagedObjectModel(for: [WishList.self, Wish.self, LocalProfile.self, SocialReadState.self, HiddenPerson.self]) else {
+                throw WishwellError("The data model couldn't be read.")
+            }
+            let container = NSPersistentCloudKitContainer(name: "Wishwell", managedObjectModel: model)
+            container.persistentStoreDescriptions = [description]
+            var loadError: Error?
+            container.loadPersistentStores { _, error in loadError = error }
+            if let loadError { throw loadError }
+            try container.initializeCloudKitSchema()
+            if let store = container.persistentStoreCoordinator.persistentStores.first {
+                try container.persistentStoreCoordinator.remove(store)
+            }
+        }
+    }
+}
+#endif

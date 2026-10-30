@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 extension SocialStore {
     static func makeForApp() -> SocialStore {
@@ -20,6 +21,18 @@ extension SocialStore {
         guard !busy else { return }
         busy = true; defer { busy = false }
         do { try await operation() } catch { self.error = error.localizedDescription }
+    }
+}
+
+/// Push alerts for follows, likes and comments. Asked for when a profile is published, the point where alerts become useful.
+enum AlertPermission {
+    static func request() async {
+        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+        if granted { UIApplication.shared.registerForRemoteNotifications() }
+    }
+    static func registerIfAllowed() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        if settings.authorizationStatus == .authorized { UIApplication.shared.registerForRemoteNotifications() }
     }
 }
 
@@ -133,6 +146,7 @@ struct PublicProfileEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Publish") { Task { await social.perform {
                         try await social.saveProfile(name: name, photo: includePhoto ? profiles.first?.photo : nil); dismiss()
+                        if !social.isDemo && !social.isLiveTest { await AlertPermission.request() }
                     } } }.disabled(social.busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("social.profile.publish")
                 }
             }.onAppear { name = social.me?.name ?? profiles.first?.displayName ?? "" }
@@ -648,6 +662,12 @@ struct LiveSocialCheckView: View {
             throw WishwellError("Use a signed physical device for this check.")
             #else
             let encoder = JSONEncoder()
+            if ProcessInfo.processInfo.arguments.contains("--initialize-cloudkit-schema") {
+                do { try CloudStore.initializeCloudKitSchema() }
+                catch let error as NSError { note("FAIL: \(error.domain) \(error.code) \(error.userInfo)"); return }
+                note("COMPLETE: private SwiftData record types and fields initialized in development.")
+                return
+            }
             let user = try await database.userID()
             note("PASS: signed-in CloudKit identity, user record \(user)")
             if try await cascadeCheck(user: user) { return }

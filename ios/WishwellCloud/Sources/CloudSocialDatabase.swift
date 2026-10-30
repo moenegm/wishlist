@@ -56,6 +56,22 @@ import CloudKit
         guard let saved = result.saveResults[record.recordID] else { throw WishwellError("This shared item couldn’t be saved. Refresh and try again.") }
         return try await decode(saved.get())
     }
+    func alertSubscriptionIDs() async throws -> Set<String> {
+        Set(try await database.allSubscriptions().map(\.subscriptionID))
+    }
+    func subscribeAlert(_ alert: SocialAlert) async throws {
+        let parent = CKRecord.Reference(recordID: CKRecord.ID(recordName: alert.parent), action: .none)
+        let subscription = CKQuerySubscription(recordType: alert.kind.rawValue, predicate: NSPredicate(format: "parent == %@", parent),
+                                               subscriptionID: alert.id, options: .firesOnRecordCreation)
+        let info = CKSubscription.NotificationInfo()
+        info.alertBody = alert.message; info.soundName = "default"; info.shouldBadge = false
+        subscription.notificationInfo = info
+        _ = try await database.save(subscription)
+    }
+    func unsubscribeAlert(_ id: String) async throws {
+        do { _ = try await database.deleteSubscription(withID: id) }
+        catch let error as CKError where error.code == .unknownItem { }
+    }
     func delete(_ row: SocialRow) async throws {
         // The server's Creator role enforces ownership independently of this client.
         _ = try await database.deleteRecord(withID: CKRecord.ID(recordName: row.id))

@@ -32,6 +32,31 @@ struct SocialQuery: Equatable {
     func query(_ query: SocialQuery) async throws -> [SocialRow]
     func save(_ row: SocialRow) async throws -> SocialRow
     func delete(_ row: SocialRow) async throws
+    func alertSubscriptionIDs() async throws -> Set<String>
+    func subscribeAlert(_ alert: SocialAlert) async throws
+    func unsubscribeAlert(_ id: String) async throws
+}
+
+/// A push alert for new interactions on one of the current person's public records.
+/// The text stays generic so no names or content pass through the push service.
+struct SocialAlert: Hashable {
+    static let prefix = "ww-alert-"
+    var kind: SocialKind
+    var parent: String
+    var id: String { "\(Self.prefix)\(kind.rawValue)-\(parent)" }
+    var message: String {
+        switch kind {
+        case .follow: "Someone followed you on Wishwell."
+        case .like: "Someone liked your wishlist."
+        default: "Someone commented on your wishlist."
+        }
+    }
+}
+
+extension SocialDatabase {
+    func alertSubscriptionIDs() async throws -> Set<String> { [] }
+    func subscribeAlert(_ alert: SocialAlert) async throws {}
+    func unsubscribeAlert(_ id: String) async throws {}
 }
 
 struct PublicProfile: Codable, Identifiable, Hashable {
