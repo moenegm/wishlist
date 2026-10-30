@@ -147,6 +147,23 @@ struct PhotoViewer: View {
     }
 }
 
+/// "♥ 2 · 1 comment" under a wish, from the list's last-loaded likes and comments.
+struct ReactionCounts: View {
+    let thread: SocialThread?
+    let wishID: UUID
+    var body: some View {
+        let likes = thread?.wishLikes[wishID] ?? 0, comments = thread?.wishComments[wishID] ?? 0
+        if likes + comments > 0 {
+            HStack(spacing: 14) {
+                if likes > 0 { Label("\(likes)", systemImage: "heart.fill") }
+                if comments > 0 { Label("\(comments)", systemImage: "bubble.left.fill") }
+            }.font(.caption).foregroundStyle(Theme.green)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(likes) \(likes == 1 ? "like" : "likes"), \(comments) \(comments == 1 ? "comment" : "comments")")
+        }
+    }
+}
+
 struct PublicListRow: View {
     let list: PublicList
     var body: some View {
@@ -245,6 +262,7 @@ struct PublicListView: View {
                                     if wish.fulfilled { Label("Fulfilled", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green).font(.caption) }
                                     Text(wish.title).font(.system(.title2, design: .serif))
                                     OptionRows(options: wish.options, interactive: false)
+                                    ReactionCounts(thread: social.cachedThread(listID: list.id, wishID: nil), wishID: wish.id)
                                 }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(wish.fulfilled ? Theme.sage : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
                             }.buttonStyle(.plain)
                         }
@@ -330,7 +348,7 @@ struct SocialThreadView: View {
                 .disabled(social.me == nil || !loaded || thread.paused || savingLike)
                 .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
                 .accessibilityIdentifier("social.like")
-            Text("Comments").font(.system(.title2, design: .serif))
+            Text(wishID == nil ? "Comments on this list" : "Comments on this wish").font(.system(.title2, design: .serif))
             if !loaded && message == nil { ProgressView().frame(maxWidth: .infinity, alignment: .leading) }
             ForEach(thread.comments) { comment in
                 VStack(alignment: .leading, spacing: 8) {

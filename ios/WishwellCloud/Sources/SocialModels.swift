@@ -118,6 +118,9 @@ struct SocialThread {
     var liked = false
     var likeCount = 0
     var comments: [SocialComment] = []
+    /// For the list-level thread: how many people liked, and how many comments, each wish has.
+    var wishLikes: [UUID: Int] = [:]
+    var wishComments: [UUID: Int] = [:]
 }
 struct SocialActivity: Identifiable {
     var id: String

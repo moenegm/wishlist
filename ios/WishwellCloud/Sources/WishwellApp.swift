@@ -2,6 +2,7 @@ import SwiftUI
 import UserNotifications
 import SwiftData
 import CryptoKit
+import BackgroundTasks
 
 /// Receives the push token CloudKit needs for follow, like and comment alerts.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -23,6 +24,62 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("Wishwell alerts: push registration failed: \(error)")
+    }
+}
+
+/// Checks for new follows, likes and comments while Wishwell is closed, using iOS background refresh,
+/// and shows them as banners with a count on the app icon. iOS decides when this runs, so alerts can be
+/// minutes or hours late; it's a backup for iCloud's own push alerts.
+@MainActor enum BackgroundActivity {
+    static let taskID = "com.nujoomdigital.wishwell.activity"
+    private static let knownKey = "WishwellKnownActivity", badgeKey = "WishwellBadge"
+    private static let enabledKey = "WishwellBackgroundActivity", hiddenKey = "WishwellHiddenPeople"
+    static func schedule() {
+        guard UserDefaults.standard.bool(forKey: enabledKey) else { return }
+        let request = BGAppRefreshTaskRequest(identifier: taskID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        do { try BGTaskScheduler.shared.submit(request) } catch { print("Wishwell background check not scheduled: \(error)") }
+    }
+    /// Called with what the app is showing, so nothing already seen comes back as a banner.
+    static func remember(_ rows: [SocialActivity], unread: Int, hidden: Set<String>, publicAccount: Bool) {
+        let defaults = UserDefaults.standard
+        defaults.set(publicAccount, forKey: enabledKey)
+        defaults.set(Array(hidden), forKey: hiddenKey)
+        defaults.set(unread, forKey: badgeKey)
+        known(adding: rows.map(\.id))
+    }
+    /// IDs already shown in the app or as a banner, newest last.
+    @discardableResult private static func known(adding ids: [String] = []) -> Set<String> {
+        var list = UserDefaults.standard.stringArray(forKey: knownKey) ?? []
+        let existing = Set(list)
+        list += ids.filter { !existing.contains($0) }
+        list = Array(list.suffix(500))
+        UserDefaults.standard.set(list, forKey: knownKey)
+        return Set(list)
+    }
+    static func check() async {
+        schedule()
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: enabledKey) else { return }
+        let social = SocialStore()
+        guard social.enabled else { return }
+        social.hidden = Set(defaults.stringArray(forKey: hiddenKey) ?? [])
+        do {
+            try await social.connect()
+            guard social.me != nil else { return }
+            let seen = known()
+            let fresh = try await social.activity().filter { !seen.contains($0.id) }
+            guard !fresh.isEmpty else { return }
+            for row in fresh.prefix(5) {
+                let content = UNMutableNotificationContent()
+                content.body = row.message; content.sound = .default
+                try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "ww-activity-\(row.id)", content: content, trigger: nil))
+            }
+            known(adding: fresh.map(\.id))
+            let badge = defaults.integer(forKey: badgeKey) + fresh.count
+            defaults.set(badge, forKey: badgeKey)
+            try? await UNUserNotificationCenter.current().setBadgeCount(badge)
+        } catch { print("Wishwell background check failed: \(error)") }
     }
 }
 
@@ -75,6 +132,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 if !liveSocialCheck { await cloud.open(local: local, library: library) }
             }
         }
+        .backgroundTask(.appRefresh(BackgroundActivity.taskID)) { await BackgroundActivity.check() }
     }
 }
 
@@ -134,6 +192,18 @@ struct LibraryRoot: View {
             }
         }
         .onChange(of: unreadCount) { _, count in UNUserNotificationCenter.current().setBadgeCount(count) }
+        .onChange(of: social.activityRows.map(\.id)) { _, _ in
+            #if DEBUG
+            // --check-activity runs the background check in the foreground, so what's on screen mustn't count as seen first.
+            if ProcessInfo.processInfo.arguments.contains("--check-activity") { return }
+            #endif
+            BackgroundActivity.remember(social.activityRows, unread: unreadCount, hidden: social.hidden, publicAccount: social.me != nil)
+        }
+        .onChange(of: social.me?.id) { _, _ in BackgroundActivity.remember(social.activityRows, unread: unreadCount, hidden: social.hidden, publicAccount: social.me != nil) }
+        .onChange(of: phase) { _, value in if value == .background { BackgroundActivity.schedule() } }
+        #if DEBUG
+        .task { if ProcessInfo.processInfo.arguments.contains("--check-activity") { try? await Task.sleep(for: .seconds(3)); await BackgroundActivity.check() } }
+        #endif
         .task(id: publicationFingerprint) { await updatePublicCopies() }
         .onChange(of: phase) { _, value in if value == .active { Task {
             await updatePublicCopies()

@@ -112,7 +112,7 @@ final class WishwellUITests: XCTestCase {
     @MainActor func testLiveSocial3OwnerSeesActivityThenRemovesEverything() throws {
         let app = try launchLiveSocial()
         openArea(app, "Notifications")
-        for text in ["\(peerName) followed you", "\(peerName) liked \(liveList)", "\(peerName) commented on \(liveList)"] {
+        for text in ["\(peerName) followed you", "\(peerName) liked your list \(liveList)", "\(peerName) commented on your list \(liveList)"] {
             XCTAssertTrue(labelled(app, text).waitForExistence(timeout: 30), "Missing activity: \(text)")
         }
         app.buttons["social.activity.markRead"].tap()

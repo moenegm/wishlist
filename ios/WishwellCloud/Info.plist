@@ -29,7 +29,12 @@
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>fetch</string>
 		<string>remote-notification</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.nujoomdigital.wishwell.activity</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

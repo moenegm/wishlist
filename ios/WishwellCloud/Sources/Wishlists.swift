@@ -98,7 +98,9 @@ struct ListDetail: View {
                 if list.sortedWishes.isEmpty { ContentUnavailableView("Ready for a first wish", systemImage: "sparkles") }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16)], spacing: 16) {
                     ForEach(list.sortedWishes.filter { showFulfilled || !$0.fulfilled }) { wish in
-                        NavigationLink { WishDetail(wish: wish) } label: { WishTile(wish: wish) }.buttonStyle(.plain)
+                        NavigationLink { WishDetail(wish: wish) } label: {
+                            WishTile(wish: wish, counts: list.publicRecordName.flatMap { social.cachedThread(listID: $0, wishID: nil) })
+                        }.buttonStyle(.plain)
                     }
                 }
                 OwnListThread(list: list)
@@ -148,11 +150,13 @@ struct ListDetail: View {
 
 struct WishTile: View {
     let wish: Wish
+    var counts: SocialThread?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label(wish.fulfilled ? "Fulfilled" : "A little wish", systemImage: wish.fulfilled ? "checkmark.circle.fill" : "sparkles").font(.caption).foregroundStyle(Theme.green)
             Text(wish.title).font(.system(.title2, design: .serif)).foregroundStyle(.primary)
             OptionRows(options: wish.options, interactive: false)
+            ReactionCounts(thread: counts, wishID: wish.id)
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
             .background(wish.fulfilled ? Theme.sage : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
     }

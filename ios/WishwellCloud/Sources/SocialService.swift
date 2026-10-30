@@ -284,6 +284,17 @@ import Observation
             return action.wishID == wishID
         }
         var thread = SocialThread(liked: validLikes.contains { $0.creator == user }, likeCount: Set(validLikes.map(\.creator)).count)
+        if wishID == nil {
+            // The same download already holds every wish's likes and comments, so their counts come free.
+            var likers: [UUID: Set<String>] = [:]
+            for row in likes where row.parent == listID && !hidden.contains(row.creator) {
+                if let wish = (try? row.decode(SocialAction.self))?.wishID { likers[wish, default: []].insert(row.creator) }
+            }
+            thread.wishLikes = likers.mapValues(\.count)
+            for row in comments where row.parent == listID && !hidden.contains(row.creator) {
+                if let wish = (try? row.decode(SocialAction.self))?.wishID { thread.wishComments[wish, default: 0] += 1 }
+            }
+        }
         let written = comments.compactMap { row -> (SocialRow, SocialAction)? in
             guard row.parent == listID, !hidden.contains(row.creator), let action: SocialAction = try? row.decode(),
                   action.wishID == wishID, !action.text.isEmpty, action.text.count <= 500 else { return nil }
@@ -377,7 +388,8 @@ import Observation
                 for row in rows where row.parent == own.id && row.creator != user && !hidden.contains(row.creator) {
                     guard let action: SocialAction = try? row.decode() else { continue }
                     guard current.contains(action.wishID), let author = try await profile(owner: row.creator) else { continue }
-                    let target = action.wishID.flatMap { id in current.wishes.first { $0.id == id }?.title } ?? current.title
+                    let wishTitle = action.wishID.flatMap { id in current.wishes.first { $0.id == id }?.title }
+                    let target = wishTitle.map { "your wish \($0)" } ?? "your list \(current.title)"
                     let key = kind == .like ? "like-\(row.creator)-\(own.id)-\(action.wishID?.uuidString ?? "list")" : row.id
                     guard seen.insert(key).inserted else { continue }
                     activity.append(SocialActivity(id: row.id, actor: author, message: "\(author.name) \(kind == .like ? "liked" : "commented on") \(target)", list: current, wishID: action.wishID, date: row.createdAt, icon: kind == .like ? "heart.fill" : "bubble.left"))
