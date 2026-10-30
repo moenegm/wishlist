@@ -124,6 +124,24 @@ struct PublicAvatar: View {
         }.frame(width: size, height: size).clipShape(Circle()).accessibilityHidden(true)
     }
 }
+/// Opens someone's profile when only its record name is known, as with a notification that just arrived.
+struct PersonLoader: View {
+    let id: String
+    @Environment(SocialStore.self) private var social
+    @State private var person: PublicProfile?
+    @State private var missing = false
+    var body: some View {
+        Group {
+            if let person { PublicPersonView(person: person) }
+            else if missing { ContentUnavailableView("Profile unavailable", systemImage: "person.crop.circle.badge.xmark") }
+            else { ProgressView() }
+        }.task {
+            person = try? await social.person(id)
+            missing = person == nil
+        }
+    }
+}
+
 /// A person's profile photo, full size.
 struct PhotoViewer: View {
     let person: PublicProfile
@@ -494,6 +512,8 @@ struct ActivityView: View {
                     if let list = row.list, let wishID = row.wishID { NavigationLink { PublicWishView(listID: list.id, wishID: wishID).onAppear { markRead([row]) } } label: { activityRow(row) } }
                     else if let list = row.list { NavigationLink { PublicListView(id: list.id).onAppear { markRead([row]) } } label: { activityRow(row) } }
                     else if let actor = row.actor { NavigationLink { PublicPersonView(person: actor).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else if let listID = row.linkListID, let wishID = row.wishID { NavigationLink { PublicWishView(listID: listID, wishID: wishID).onAppear { markRead([row]) } } label: { activityRow(row) } }
+                    else if let profileID = row.linkProfileID { NavigationLink { PersonLoader(id: profileID).onAppear { markRead([row]) } } label: { activityRow(row) } }
                     else { activityRow(row) }
                 }.accessibilityValue(readState.contains { $0.id == row.id } ? "Read" : "Unread")
             }

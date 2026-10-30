@@ -440,6 +440,11 @@ import Observation
     }
     /// Everything for the Notifications screen. The three kinds load side by side, and so does each list and person,
     /// because one lookup after another took several seconds.
+    /// Someone's public profile by its record name, for opening a person from a notification.
+    func person(_ id: String) async throws -> PublicProfile? {
+        guard let row = try await profileRow(id), row.kind == .profile, !hidden.contains(row.creator) else { return nil }
+        return try? profileValue(row)
+    }
     /// A list owner's profile record, reused for a minute: every list lookup checks it.
     private func profileRow(_ id: String) async throws -> SocialRow? {
         if let cached = profileRows[id], Date().timeIntervalSince(cached.fetched) < profileLifetime { return cached.row }

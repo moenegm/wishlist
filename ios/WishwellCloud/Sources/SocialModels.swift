@@ -126,6 +126,9 @@ struct SocialActivity: Identifiable, Codable {
     var list: PublicList?
     /// The wish a like or comment was on; nil when it was on the whole list.
     var wishID: UUID? = nil
+    /// For a notification shown from its banner before the full details load: where tapping it should go.
+    var linkListID: String? = nil
+    var linkProfileID: String? = nil
     var date: Date
     var icon: String
 }

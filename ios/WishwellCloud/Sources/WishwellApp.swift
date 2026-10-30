@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         #endif
         return [.banner, .list, .sound]
     }
+    /// Tapping a Wishwell banner opens the app on its Notifications tab.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await MainActor.run { NotificationCenter.default.post(name: .openWishwellNotifications, object: nil) }
+    }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
         Task { @MainActor in await PushService.save(token: token) }
@@ -138,6 +142,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 }
 
+extension Notification.Name {
+    static let openWishwellNotifications = Notification.Name("WishwellOpenNotifications")
+}
+
 @main struct WishwellCloudApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var cloud = CloudStore()
@@ -219,8 +227,8 @@ struct LibraryRoot: View {
                         .navigationTitle("Wishwell")
                 } detail: { section(area ?? .lists).id(area) }
             } else {
-                TabView {
-                    ForEach(LibraryArea.allCases) { item in section(item).tabItem { Label(item.rawValue, systemImage: item.icon) }.badge(item == .activity ? unreadCount : 0) }
+                TabView(selection: $area) {
+                    ForEach(LibraryArea.allCases) { item in section(item).tabItem { Label(item.rawValue, systemImage: item.icon) }.badge(item == .activity ? unreadCount : 0).tag(Optional(item)) }
                 }
             }
         }
@@ -249,6 +257,7 @@ struct LibraryRoot: View {
             }
         }
         .onChange(of: hidden.map(\.ownerID)) { _, values in social.hidden = Set(values) }
+        .onReceive(NotificationCenter.default.publisher(for: .openWishwellNotifications)) { _ in area = .activity }
         // New follows, likes and comments show up while the app is open, not only when it comes back to the front.
         .task(id: phase) {
             guard phase == .active else { return }
@@ -312,7 +321,13 @@ struct LibraryRoot: View {
         social.deliveredRows = delivered.compactMap { notification in
             let body = notification.request.content.body
             guard !body.isEmpty, !known.contains(body) else { return nil }
-            return SocialActivity(id: "banner-\(notification.request.identifier)", actor: nil, message: body, date: notification.date, icon: "bell.fill")
+            // The website says which wish or person each notification is about, so this copy opens it straight away.
+            let link = notification.request.content.userInfo["wishwell"] as? [String: Any]
+            var row = SocialActivity(id: "banner-\(notification.request.identifier)", actor: nil, message: body, date: notification.date, icon: "bell.fill")
+            row.linkListID = link?["list"] as? String
+            row.wishID = (link?["wish"] as? String).flatMap(UUID.init(uuidString:))
+            row.linkProfileID = link?["profile"] as? String
+            return row
         }
     }
     private func section(_ item: LibraryArea) -> some View {
