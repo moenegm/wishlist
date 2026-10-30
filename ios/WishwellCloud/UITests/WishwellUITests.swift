@@ -42,7 +42,11 @@ final class WishwellUITests: XCTestCase {
         let sharing = app.switches["list.public"]; XCTAssertTrue(sharing.waitForExistence(timeout: 5))
         XCTAssertEqual(sharing.value as? String, "0")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 10), "The list did not become public")
+        // The owner sees the list's likes and comments on their own list page, both public and private.
+        XCTAssertTrue(app.staticTexts["Comments on this list"].waitForExistence(timeout: 10), "Own public list shows no likes and comments")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "0", timeout: 10), "The list did not become private")
+        XCTAssertTrue(app.staticTexts["social.thread.paused"].waitForExistence(timeout: 10) || app.staticTexts["Comments are paused while this list is private."].exists,
+                      "Own private list doesn't show its paused comments")
     }
 
     @MainActor func testCreateCloudSyncFixture() throws {

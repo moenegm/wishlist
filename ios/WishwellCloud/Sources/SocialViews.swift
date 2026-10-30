@@ -597,7 +597,12 @@ struct OwnListThread: View {
     @Environment(SocialStore.self) private var social
     @State private var recordID: String?
     var body: some View {
-        Group { if let recordID { SocialThreadView(listID: recordID, wishID: wishID) } }
+        // A VStack with a placeholder always appears on screen, so the lookup below runs even before anything is found.
+        VStack(alignment: .leading) {
+            // Switching the list public or private loads the conversation again, so it opens or pauses at once.
+            if let recordID { SocialThreadView(listID: recordID, wishID: wishID).id("\(recordID)|\(list.publicRecordName != nil)") }
+            else { Color.clear.frame(height: 1) }
+        }
             // Also reruns once the public account has loaded: a list opened right after launch would otherwise find none and stop.
             .task(id: "\(list.publicRecordName ?? "")|\(social.me?.id ?? "")") {
                 guard social.enabled, social.me != nil else { recordID = nil; return }
