@@ -39,9 +39,21 @@ struct ShoppingOption: Codable, Hashable, Identifiable {
     var location: String = ""
     var price: String = ""
     var currency: String = "USD"
+    /// A web address, whether or not it was typed with https:// ("amazon.com/…" counts too).
     var link: URL? {
-        guard let url = URL(string: location), ["https", "http"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }
+        let text = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains(" ") else { return nil }
+        let full = text.contains("://") ? text : "https://" + text
+        // A user name in the address ("mailto:me@site.com" read as a web address) is never a store link.
+        guard let url = URL(string: full), ["https", "http"].contains(url.scheme?.lowercased() ?? ""), url.user == nil,
+              let host = url.host, let ending = host.components(separatedBy: ".").dropFirst().last,
+              ending.count >= 2, ending.allSatisfy(\.isLetter) else { return nil }
         return url
+    }
+    /// What to show for this option: the store's site for a link ("amazon.com"), otherwise what was typed.
+    var label: String {
+        guard let host = link?.host?.lowercased() else { return location }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
     var formattedPrice: String? {
         guard let value = Decimal(string: price, locale: Locale(identifier: "en_US_POSIX")), !price.isEmpty else { return nil }

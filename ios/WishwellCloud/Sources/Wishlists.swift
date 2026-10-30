@@ -165,6 +165,13 @@ struct WishTile: View {
     }
 }
 
+/// Text first, then a small icon, like "amazon.com ↗".
+struct TrailingIcon: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) { configuration.title; configuration.icon.imageScale(.small) }
+    }
+}
+
 struct OptionRows: View {
     let options: [ShoppingOption]
     var interactive = true
@@ -173,8 +180,9 @@ struct OptionRows: View {
             ForEach(options) { option in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Group {
-                        if interactive, let link = option.link { Link(option.location, destination: link).lineLimit(2) }
-                        else { Text(option.location.isEmpty ? "Price" : option.location).lineLimit(2) }
+                        if interactive, let link = option.link {
+                            Link(destination: link) { Label(option.label, systemImage: "arrow.up.right.square").labelStyle(TrailingIcon()) }.lineLimit(1)
+                        } else { Text(option.location.isEmpty ? "Price" : option.label).lineLimit(2) }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     if let price = option.formattedPrice { Text(price).fontWeight(.medium).fixedSize() }
                 }.font(.subheadline)

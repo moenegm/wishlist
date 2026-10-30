@@ -18,6 +18,13 @@ final class StorageTests: XCTestCase {
         XCTAssertNil(ShoppingOption(location: "javascript:alert(1)").link)
         XCTAssertNil(ShoppingOption(location: "file:///private/data").link)
         XCTAssertEqual(ShoppingOption(location: "https://example.com/chair").link?.host, "example.com")
+        // Addresses typed without https:// still open, and show as just the store's site.
+        XCTAssertEqual(ShoppingOption(location: "amazon.com/s?k=chair").link?.absoluteString, "https://amazon.com/s?k=chair")
+        XCTAssertEqual(ShoppingOption(location: "https://www.amazon.com/dp/123").label, "amazon.com")
+        for text in ["Furniture shop", "Shop.", "ftp://example.com", "mailto:me@example.com", "1.5", "e.g. Target"] {
+            XCTAssertNil(ShoppingOption(location: text).link, text)
+        }
+        XCTAssertEqual(ShoppingOption(location: "Local bookshop").label, "Local bookshop")
     }
 
     @MainActor func testArchiveRoundTripAndDuplicateImport() throws {

@@ -369,13 +369,13 @@ struct PublicWishView: View {
         add(SocialRow(id: me.id, kind: .profile, creator: user, searchTokens: PublicProfile.tokens(for: me.name), payload: (try? encoder.encode(me)) ?? Data()))
         // Made-up people for trying the circle: everyone is in your circle and has you in theirs.
         let people: [(id: String, name: String, hue: CGFloat, lists: [(String, String, [(String, [(String, String)])])])] = [
-            ("friend", "Tomas", 0.08, [("A cozy corner", "Home", [("Reading chair", [("Furniture shop", "129"), ("Second option", "149")]), ("Linen throw blanket", [("Home store", "45")])])]),
-            ("layla", "Layla Haddad", 0.92, [("Birthday", "Celebrations", [("Silver hoop earrings", [("Jewelry studio", "68")]), ("Pottery class for two", [("Clay studio", "120")]), ("Rose candle", [("Candle shop", "24")])]),
-                                             ("Kitchen", "Home", [("Stand mixer", [("Kitchen store", "349"), ("Online", "329")])])]),
-            ("omar", "Omar Saleh", 0.58, [("Running", "Sport", [("Trail running shoes", [("Sports shop", "140")]), ("Wireless earbuds", [("Electronics", "199")])])]),
-            ("nadia", "Nadia Karim", 0.35, [("Books to read", "Books", [("The Overstory", [("Bookshop", "18")]), ("Braiding Sweetgrass", [("Bookshop", "20")])]),
+            ("friend", "Tomas", 0.08, [("A cozy corner", "Home", [("Reading chair", [("Furniture shop", "129"), ("Second option", "149")]), ("Linen throw blanket", [("https://www.target.com/s?searchTerm=linen+throw+blanket", "45")])])]),
+            ("layla", "Layla Haddad", 0.92, [("Birthday", "Celebrations", [("Silver hoop earrings", [("etsy.com/search?q=silver+hoop+earrings", "68")]), ("Pottery class for two", [("Clay studio", "120")]), ("Rose candle", [("https://www.amazon.com/s?k=rose+candle", "24"), ("Candle shop", "28")])]),
+                                             ("Kitchen", "Home", [("Stand mixer", [("https://www.kitchenaid.com", "349"), ("https://www.amazon.com/s?k=stand+mixer", "329")])])]),
+            ("omar", "Omar Saleh", 0.58, [("Running", "Sport", [("Trail running shoes", [("https://www.rei.com/search?q=trail+running+shoes", "140")]), ("Wireless earbuds", [("https://www.bestbuy.com/site/searchpage.jsp?st=wireless+earbuds", "199")])])]),
+            ("nadia", "Nadia Karim", 0.35, [("Books to read", "Books", [("The Overstory", [("https://bookshop.org/search?keywords=the+overstory", "18")]), ("Braiding Sweetgrass", [("Local bookshop", "20")])]),
                                              ("Garden", "Outdoors", [("Herb planter", [("Garden centre", "35")])])]),
-            ("yusuf", "Yusuf Amin", 0.75, [("Desk setup", "Work", [("Mechanical keyboard", [("Electronics", "110")]), ("Desk lamp", [("Lighting store", "60")])])]),
+            ("yusuf", "Yusuf Amin", 0.75, [("Desk setup", "Work", [("Mechanical keyboard", [("https://www.amazon.com/s?k=mechanical+keyboard", "110")]), ("Desk lamp", [("ikea.com/us/en/search/?q=desk+lamp", "60")])])]),
         ]
         var firstWish: [String: UUID] = [:]
         for (index, person) in people.enumerated() {
