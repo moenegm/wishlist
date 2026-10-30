@@ -45,7 +45,7 @@ After validation/review, import the combined file into **development** with `ckt
 
 ## Current limitations
 
-The activity bell refreshes on foreground and pull-to-refresh. There are no alert pushes or delivery guarantees while the app is closed. Public-copy updates run while the app is open; private changes saved offline remain local/queued for private sync until connectivity returns. Republishing public copies waits for the app to run again. Activity is derived from current public records and shows the latest 100 entries, so deleted/unpublished activity disappears. Queries honor CloudKit cursors and fail explicitly at 2,000 results rather than silently returning incorrect totals; scale work will need UI pagination and server-side query batching. Blocked people are hidden on the user's devices; a public record remains publicly readable.
+The activity bell refreshes on foreground and pull-to-refresh. Push alerts come from CloudKit query subscriptions on the person's profile (follows) and each published list (likes and comments). They are created and removed as the profile and lists change, carry generic text only, and have not yet been checked with the app closed. Public-copy updates run while the app is open; private changes saved offline remain local/queued for private sync until connectivity returns. Republishing public copies waits for the app to run again. Activity is derived from current public records and shows the latest 100 entries, so deleted/unpublished activity disappears. Queries honor CloudKit cursors and fail explicitly at 2,000 results rather than silently returning incorrect totals; scale work will need UI pagination and server-side query batching. Blocked people are hidden on the user's devices; a public record remains publicly readable.
 
 The two-account in-memory tests cover the domain's rules, not Apple's live permission enforcement. The debug-only `--social-preview` launch argument provides synthetic people and a wishlist for simulator UI testing. This preview uses an on-device library and an in-memory social database, shows a preview banner, never contacts the public CloudKit database, and is unavailable in Release builds.
 
@@ -136,3 +136,9 @@ Still unverified: Moderator access, read markers syncing to a second device on t
 All five passed on October 30, 2026 (owner iPhone, owner iPad, peer iPhone). The iPad showed the read marker within about 40 seconds, and the Circle and Notifications screens worked in the iPad split layout.
 
 Before production: the development schema only gained `CD_SocialReadState` when the first read marker synced. `CD_HiddenPerson` and `CD_LocalProfile` may still be missing. Development creates missing types on first save, but production does not, so check a fresh development export for every SwiftData model before deploying.
+
+## Private schema completeness
+
+On October 30, 2026 the development schema had `CD_Wish`, `CD_WishList` and `CD_SocialReadState`, but no `CD_HiddenPerson` or `CD_LocalProfile`. `CD_WishList` lacked `CD_publicRecordName` and `CD_legacyID`, and `CD_Wish` lacked `CD_legacyID`. Development adds types and fields only when a device first saves a value, and production never does, so a production deploy now would break syncing for those models.
+
+`--social-live-check --initialize-cloudkit-schema` (Debug, signed device) runs `initializeCloudKitSchema()` against a throwaway store, which creates every type and field without opening the personal library. The first run failed with "A Core Data error occurred"; the diagnostic now logs the error's domain, code and details so the next run shows the cause. Check the Record Types page in CloudKit Console afterwards.
