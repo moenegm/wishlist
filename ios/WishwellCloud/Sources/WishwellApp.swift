@@ -328,10 +328,9 @@ struct LibraryRoot: View {
     /// Notifications that already arrived as banners, so the Notifications screen shows them the moment it opens.
     private func showDeliveredNotifications() async {
         let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
-        let known = Set(social.activityRows.map(\.message))
-        social.deliveredRows = delivered.compactMap { notification in
+        social.keepBanners(delivered.compactMap { notification in
             let body = notification.request.content.body
-            guard !body.isEmpty, !known.contains(body) else { return nil }
+            guard !body.isEmpty else { return nil }
             // The website says which wish or person each notification is about, so this copy opens it straight away.
             let link = notification.request.content.userInfo["wishwell"] as? [String: Any]
             var row = SocialActivity(id: "banner-\(notification.request.identifier)", actor: nil, message: body, date: notification.date, icon: "bell.fill")
@@ -339,7 +338,7 @@ struct LibraryRoot: View {
             row.wishID = (link?["wish"] as? String).flatMap(UUID.init(uuidString:))
             row.linkProfileID = link?["profile"] as? String
             return row
-        }
+        })
     }
     private func section(_ item: LibraryArea) -> some View {
         NavigationStack {

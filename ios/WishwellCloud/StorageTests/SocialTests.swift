@@ -342,6 +342,20 @@ final class SocialTests: XCTestCase {
         expectEqual(a.map(\.id), b.map(\.id))
     }
 
+    @MainActor func testBannersAreKeptUntilICloudHasTheDetailsAndForAtMostThirtyDays() async throws {
+        let (_, owner, _, _) = try await fixture()
+        let gone = SocialActivity(id: "banner-1", actor: nil, message: "Kite is no longer on Moe’s list", date: Date(), icon: "bell.fill")
+        let old = SocialActivity(id: "banner-0", actor: nil, message: "Old news", date: Date().addingTimeInterval(-31 * 86_400), icon: "bell.fill")
+        owner.keepBanners([gone, old])
+        owner.keepBanners([])
+        expectEqual(owner.deliveredRows.map(\.id), ["banner-1"])
+        owner.keepBanners([gone])
+        expectEqual(owner.deliveredRows.count, 1)
+        owner.activityRows = [SocialActivity(id: "real", actor: nil, message: gone.message, date: Date(), icon: "gift")]
+        owner.keepBanners([])
+        expectTrue(owner.deliveredRows.isEmpty)
+    }
+
     @MainActor func testBlockedPeopleAreHiddenFromDiscoveryClaimsAndActivity() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)

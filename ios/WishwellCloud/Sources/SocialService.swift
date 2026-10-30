@@ -44,7 +44,18 @@ import Observation
     private var warming: Task<Void, Never>?
     private var loadingActivity: Task<[SocialActivity], Error>?
     /// Notifications that have arrived as banners, shown at once until the full details load from iCloud.
+    /// Some, like "no longer on the list", only ever exist as a banner, so they're kept on the phone for 30 days.
     var deliveredRows: [SocialActivity] = []
+    static let bannerLifetime: TimeInterval = 30 * 86_400
+    /// Adds banners that just arrived to the ones already kept, leaving out any iCloud has since given full details for.
+    func keepBanners(_ fresh: [SocialActivity]) {
+        let known = Set(activityRows.map(\.message))
+        var seen: Set<String> = []
+        deliveredRows = (fresh + deliveredRows).filter {
+            seen.insert($0.id).inserted && !known.contains($0.message) && Date().timeIntervalSince($0.date) < Self.bannerLifetime
+        }
+        saveSnapshot()
+    }
     private var epoch = UUID()
     init(database: (any SocialDatabase)? = nil, enabled: Bool = Bundle.main.object(forInfoDictionaryKey: "WishwellSocialEnabled") as? Bool ?? false) {
         self.database = database ?? CloudSocialDatabase(); self.enabled = enabled
@@ -59,6 +70,7 @@ import Observation
         var circle: [PublicProfile]
         var lists: [String: [PublicList]]
         var activity: [SocialActivity]?
+        var banners: [SocialActivity]?
     }
     private var snapshotActor: String?
     private static var snapshotURL: URL { URL.applicationSupportDirectory.appending(path: "WishwellCircle.json") }
@@ -70,13 +82,14 @@ import Observation
         followingOwners = Set(snapshot.circle.map(\.ownerID))
         ownerListCache = snapshot.lists
         activityRows = snapshot.activity ?? []
+        deliveredRows = (snapshot.banners ?? []).filter { Date().timeIntervalSince($0.date) < Self.bannerLifetime }
         for list in snapshot.lists.values.flatMap({ $0 }) { listCache[list.id] = list }
     }
     private func saveSnapshot() {
         guard let actorID else { return }
         let circle = circleCache["following"] ?? []
         let owners = Set(circle.map(\.ownerID))
-        let snapshot = Snapshot(actor: actorID, me: me, circle: circle, lists: ownerListCache.filter { owners.contains($0.key) }, activity: activityRows)
+        let snapshot = Snapshot(actor: actorID, me: me, circle: circle, lists: ownerListCache.filter { owners.contains($0.key) }, activity: activityRows, banners: deliveredRows)
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         try? FileManager.default.createDirectory(at: Self.snapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: Self.snapshotURL, options: [.atomic, .completeFileProtection])
