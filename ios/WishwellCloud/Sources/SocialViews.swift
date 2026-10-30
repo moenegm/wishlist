@@ -40,7 +40,11 @@ enum AlertPermission {
         #if DEBUG
         print("Wishwell alerts: permission \(settings.authorizationStatus.rawValue) alert \(settings.alertSetting.rawValue) center \(settings.notificationCenterSetting.rawValue) lock \(settings.lockScreenSetting.rawValue) style \(settings.alertStyle.rawValue) badge \(settings.badgeSetting.rawValue)")
         #endif
-        if settings.authorizationStatus == .authorized { UIApplication.shared.registerForRemoteNotifications() }
+        guard settings.authorizationStatus == .authorized else { return }
+        // People who allowed alerts before badges were asked for never got the app icon's number.
+        // Asking again doesn't show a prompt once alerts are allowed; it adds badges to Wishwell's settings.
+        if settings.badgeSetting != .enabled { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) }
+        UIApplication.shared.registerForRemoteNotifications()
     }
 }
 
