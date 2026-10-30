@@ -1,6 +1,8 @@
 # Social schema setup
 
-The app keeps social features disabled through `WishwellSocialEnabled` until development permissions have been configured and tested. Personal iCloud sync does not require this social schema. Neither a successful build nor the isolated social tests prove the permissions on Apple's actual service.
+Social features are on (`WishwellSocialEnabled` in `Info.plist`). Personal iCloud sync does not require this social schema. Neither a successful build nor the isolated social tests prove the permissions on Apple's actual service.
+
+How the record types are used today: `WWProfile` is a public account, `WWList` a public list (or, while the list is private, a placeholder holding only its wish IDs), `WWFollow` someone added to a circle, and `WWLike` an "I'm getting this" mark (`GiftClaim` payload; old likes don't decode as claims). `WWComment` is no longer written; leftover comments are removed with a public account. The sections below the schema are the history of how the permissions were checked, including the earlier likes and comments.
 
 `social.ckdb` defines six public record types. The common `payload` contains JSON. Parent references use `deleteSelf`; Creator identity and creation time come from CloudKit system metadata, not the JSON payload.
 
@@ -45,7 +47,7 @@ After validation/review, import the combined file into **development** with `ckt
 
 ## Current limitations
 
-The activity bell refreshes on foreground and pull-to-refresh. Push alerts come from CloudKit query subscriptions on the person's profile (follows) and each published list (likes and comments). They are created and removed as the profile and lists change, and carry generic text only. Each subscription is pinned to the public default zone. A list that was just published or unpublished is passed in directly, because the query index can lag a save by several seconds. Delivery is not working yet (see the main README). `--social-live-check --alert-probe` saves an unfiltered comment subscription for diagnosis and `--alert-probe off` removes it; `testLiveAlerts1`–`3` run the two-phone check. Public-copy updates run while the app is open; private changes saved offline remain local/queued for private sync until connectivity returns. Republishing public copies waits for the app to run again. Activity is derived from current public records and shows the latest 100 entries, so deleted/unpublished activity disappears. Queries honor CloudKit cursors and fail explicitly at 2,000 results rather than silently returning incorrect totals; scale work will need UI pagination and server-side query batching. Blocked people are hidden on the user's devices; a public record remains publicly readable.
+Notifications now come from nujoomdigital.com rather than CloudKit query subscriptions, which never delivered; the app removes any alert subscriptions earlier versions created. See the main README. Public-copy updates run while the app is open; private changes saved offline stay queued for private sync until connectivity returns. Activity is derived from current public records and shows the latest 100 entries. Queries honor CloudKit cursors and fail explicitly at 2,000 results rather than silently returning incorrect totals. Blocked people are hidden on the user's devices; a public record remains publicly readable.
 
 The two-account in-memory tests cover the domain's rules, not Apple's live permission enforcement. The debug-only `--social-preview` launch argument provides synthetic people and a wishlist for simulator UI testing. This preview uses an on-device library and an in-memory social database, shows a preview banner, never contacts the public CloudKit database, and is unavailable in Release builds.
 
