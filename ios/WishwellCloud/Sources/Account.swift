@@ -86,7 +86,7 @@ struct SettingsView: View {
             }
             Section("Help") {
                 Link(destination: URL(string: "mailto:contact@nujoomdigital.com?subject=Wishwell%20feedback")!) { Label("Send feedback", systemImage: "envelope") }
-                Link(destination: URL(string: "https://nujoomdigital.com/wishwell/support")!) { Label("Wishwell support", systemImage: "questionmark.circle") }
+                Link(destination: URL(string: "https://nujoomdigital.com/support#wishwell")!) { Label("Wishwell support", systemImage: "questionmark.circle") }
                 Link(destination: URL(string: "https://nujoomdigital.com/privacy#wishwell")!) { Label("Privacy policy", systemImage: "hand.raised") }
             }
         }.navigationTitle("Settings")

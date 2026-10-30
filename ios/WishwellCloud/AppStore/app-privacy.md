@@ -25,6 +25,6 @@ No. There are no ads, analytics or data brokers.
 ## Links
 
 - Privacy policy URL: https://nujoomdigital.com/privacy (Wishwell section: #wishwell)
-- Support URL: https://nujoomdigital.com/wishwell/support
+- Support URL: https://nujoomdigital.com/support#wishwell
 - Marketing URL: leave empty
 - Contact: contact@nujoomdigital.com
