@@ -2,7 +2,20 @@ import SwiftUI
 import SwiftData
 import CryptoKit
 
+/// Receives the push token CloudKit needs for follow, like and comment alerts.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        #if DEBUG
+        print("Wishwell alerts: registered for push")
+        #endif
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("Wishwell alerts: push registration failed: \(error)")
+    }
+}
+
 @main struct WishwellCloudApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var cloud = CloudStore()
     private var liveSocialCheck: Bool {
         #if DEBUG
@@ -91,7 +104,7 @@ struct LibraryRoot: View {
             if social.enabled {
                 do {
                     try await social.connect(); social.activityRows = try await social.activity()
-                    if social.me != nil && !social.isLiveTest { await AlertPermission.registerIfAllowed() }
+                    if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
                 }
                 catch { social.error = error.localizedDescription }
             }

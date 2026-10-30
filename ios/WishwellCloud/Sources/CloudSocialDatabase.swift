@@ -63,6 +63,8 @@ import CloudKit
         let parent = CKRecord.Reference(recordID: CKRecord.ID(recordName: alert.parent), action: .none)
         let subscription = CKQuerySubscription(recordType: alert.kind.rawValue, predicate: NSPredicate(format: "parent == %@", parent),
                                                subscriptionID: alert.id, options: .firesOnRecordCreation)
+        // Public records live in the default zone.
+        subscription.zoneID = CKRecordZone.default().zoneID
         let info = CKSubscription.NotificationInfo()
         info.alertBody = alert.message; info.soundName = "default"; info.shouldBadge = false
         subscription.notificationInfo = info

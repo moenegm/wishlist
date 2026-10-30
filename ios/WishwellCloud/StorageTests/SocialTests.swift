@@ -8,6 +8,8 @@ import XCTest
     var keepOrphans = false
     var afterQuery: (() -> Void)?
     var alerts: [String: Set<String>] = [:]
+    /// When set, queries read this snapshot instead of the live rows, like CloudKit's lagging query index.
+    var laggingIndex: [String: SocialRow]?
     func alertSubscriptionIDs() async throws -> Set<String> { alerts[user] ?? [] }
     func subscribeAlert(_ alert: SocialAlert) async throws { alerts[user, default: []].insert(alert.id) }
     func unsubscribeAlert(_ id: String) async throws { alerts[user]?.remove(id) }
@@ -18,7 +20,7 @@ import XCTest
         return row
     }
     func query(_ query: SocialQuery) async throws -> [SocialRow] {
-        let result = rows.values.filter {
+        let result = (laggingIndex ?? rows).values.filter {
             $0.kind == query.kind && (query.creator == nil || $0.creator == query.creator) &&
             (query.parent == nil || $0.parent == query.parent) &&
             (query.sourceID == nil || $0.sourceID == query.sourceID) &&
@@ -110,6 +112,17 @@ final class SocialTests: XCTestCase {
         try await owner.removeProfile()
         try await owner.syncAlerts()
         expectEqual(database.alerts["owner"], ["someone-elses-subscription"])
+    }
+
+    @MainActor func testAlertsCoverAListTheQueryIndexHasNotCaughtUpWith() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let me = try unwrap(owner.me)
+        database.laggingIndex = database.rows
+        let listID = try await owner.publish(snapshot, existingID: nil)
+        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .like, parent: listID).id, SocialAlert(kind: .comment, parent: listID).id]))
+        database.laggingIndex = database.rows
+        try await owner.unpublish(listID)
+        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
     }
 
     @MainActor func testSearchMatchesEveryTypedWord() async throws {

@@ -83,21 +83,7 @@ final class WishwellUITests: XCTestCase {
     @MainActor func testLiveSocial1OwnerPublishes() throws {
         let app = try launchLiveSocial()
         try ensurePublicProfile(app, name: ownerName)
-        openArea(app, "My Lists")
-        let add = app.buttons["list.add"]; XCTAssertTrue(add.waitForExistence(timeout: 15)); add.tap()
-        let title = app.textFields["list.title"]; XCTAssertTrue(title.waitForExistence(timeout: 5)); title.tap(); title.typeText(liveList)
-        app.buttons["list.save"].tap()
-        tapLabel(app, liveList)
-        let addWish = app.buttons["wish.add"]; XCTAssertTrue(addWish.waitForExistence(timeout: 5)); addWish.tap()
-        let wish = app.textFields["wish.title"]; XCTAssertTrue(wish.waitForExistence(timeout: 5)); wish.tap(); wish.typeText("Live check wish")
-        let location = app.textFields["option.location.0"]; location.tap(); location.typeText("Test shop")
-        let price = app.textFields["option.price.0"]; price.tap(); price.typeText("10")
-        if app.buttons["keyboard.done"].exists { app.buttons["keyboard.done"].tap() }
-        app.buttons["wish.save"].tap()
-        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
-        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 10)); publish.tap()
-        app.buttons["social.list.confirmPublish"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["social.list.private"].waitForExistence(timeout: 30), "Publishing to development CloudKit did not finish")
+        publishLiveList(app)
         attach(app, "Owner published list")
     }
 
@@ -105,27 +91,7 @@ final class WishwellUITests: XCTestCase {
         let app = try launchLiveSocial()
         try ensurePublicProfile(app, name: peerName)
         unblockEveryone(app)
-        openArea(app, "Circle")
-        search(app, "Wishwell Owner")
-        tapLabel(app, ownerName, timeout: 30)
-        // Safe to rerun: only switch Follow and Like on when they're off.
-        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
-        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
-        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
-        tapLabel(app, liveList, timeout: 20)
-        let like = app.buttons["social.like"]; XCTAssertTrue(like.waitForExistence(timeout: 20))
-        if !like.isHittable { app.swipeUp() }
-        XCTAssertTrue(waitForValue(like, notEqualTo: "Loading", timeout: 30), "Thread did not load")
-        if (like.value as? String) == "Not liked" { like.tap() }
-        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 20)); XCTAssertEqual(like.label, "1 like")
-        if !app.staticTexts["Live check comment"].exists {
-            let field = app.textFields["social.comment.text"]
-            let editor = field.exists ? field : app.textViews["social.comment.text"]
-            editor.tap(); editor.typeText("Live check comment")
-            if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-            app.buttons["social.comment.post"].tap()
-        }
-        XCTAssertTrue(app.staticTexts["Live check comment"].firstMatch.waitForExistence(timeout: 20))
+        followLikeAndComment(app)
         app.buttons["social.list.report"].tap()
         let reason = app.textFields["social.report.reason"].exists ? app.textFields["social.report.reason"] : app.textViews["social.report.reason"]
         XCTAssertTrue(reason.waitForExistence(timeout: 5)); reason.tap(); reason.typeText("Live UI check. No moderation action needed.")
@@ -222,21 +188,116 @@ final class WishwellUITests: XCTestCase {
         try removePublicProfile(app)
     }
 
-    @MainActor private func launchLiveSocial(personalLibrary: Bool = false) throws -> XCUIApplication {
+    // MARK: Push alerts, owner iPhone (1, 3) and peer iPhone (2)
+    // Afterwards run testLiveSocial3 on the owner and testLiveSocial4 on the peer to remove everything.
+
+    @MainActor func testLiveAlerts1OwnerPublishesAndAllowsAlerts() throws {
+        let app = try launchLiveSocial(extra: ["--alerts"])
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        try ensurePublicProfile(app, name: ownerName)
+        let allow = springboard.alerts.buttons["Allow"]
+        if allow.waitForExistence(timeout: 15) { allow.tap() }
+        publishLiveList(app)
+        // Give the alert subscriptions time to reach CloudKit, then close the app.
+        sleep(15)
+        app.terminate()
+    }
+
+    @MainActor func testLiveAlerts2PeerFollowsLikesAndComments() throws {
+        let app = try launchLiveSocial()
+        try ensurePublicProfile(app, name: peerName)
+        unblockEveryone(app)
+        followLikeAndComment(app)
+        // A fresh comment each run, so a rerun still creates a record that should raise an alert.
+        let field = app.textFields["social.comment.text"]
+        let editor = field.exists ? field : app.textViews["social.comment.text"]
+        let text = "Alert check \(Int(Date().timeIntervalSince1970))"
+        editor.tap(); editor.typeText(text)
+        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+        app.buttons["social.comment.post"].tap()
+        XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20))
+        attach(app, "Peer followed, liked and commented")
+    }
+
+    /// Doesn't launch Wishwell: the alerts have to arrive while it's closed.
+    @MainActor func testLiveAlerts3OwnerReceivesAlertsWhileClosed() throws {
+        #if targetEnvironment(simulator)
+        throw XCTSkip("Push alerts need a signed device.")
+        #else
+        guard ProcessInfo.processInfo.environment["WISHWELL_LIVE_SOCIAL"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 to run live social checks.") }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        springboard.activate()
+        let top = springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.005))
+        top.press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.7)))
+        for text in ["Someone followed you on Wishwell.", "Someone liked your wishlist.", "Someone commented on your wishlist."] {
+            let alert = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+            XCTAssertTrue(alert.waitForExistence(timeout: 120), "No push alert: \(text)")
+        }
+        let shot = XCTAttachment(screenshot: springboard.screenshot()); shot.name = "Owner push alerts"; shot.lifetime = .keepAlways; add(shot)
+        XCUIDevice.shared.press(.home)
+        #endif
+    }
+
+    @MainActor private func publishLiveList(_ app: XCUIApplication) {
+        openArea(app, "My Lists")
+        let add = app.buttons["list.add"]; XCTAssertTrue(add.waitForExistence(timeout: 15)); add.tap()
+        let title = app.textFields["list.title"]; XCTAssertTrue(title.waitForExistence(timeout: 5)); title.tap(); title.typeText(liveList)
+        app.buttons["list.save"].tap()
+        tapLabel(app, liveList)
+        let addWish = app.buttons["wish.add"]; XCTAssertTrue(addWish.waitForExistence(timeout: 5)); addWish.tap()
+        let wish = app.textFields["wish.title"]; XCTAssertTrue(wish.waitForExistence(timeout: 5)); wish.tap(); wish.typeText("Live check wish")
+        let location = app.textFields["option.location.0"]; location.tap(); location.typeText("Test shop")
+        let price = app.textFields["option.price.0"]; price.tap(); price.typeText("10")
+        if app.buttons["keyboard.done"].exists { app.buttons["keyboard.done"].tap() }
+        app.buttons["wish.save"].tap()
+        app.buttons["list.menu"].tap(); app.buttons["Wishlist sharing"].tap()
+        let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 10)); publish.tap()
+        app.buttons["social.list.confirmPublish"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["social.list.private"].waitForExistence(timeout: 30), "Publishing to development CloudKit did not finish")
+    }
+
+    @MainActor private func followLikeAndComment(_ app: XCUIApplication) {
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        tapLabel(app, ownerName, timeout: 30)
+        // Safe to rerun: only switch Follow and Like on when they're off.
+        let follow = app.buttons["social.follow"]; XCTAssertTrue(follow.waitForExistence(timeout: 15))
+        if !waitForLabel(follow, "Unfollow", timeout: 5) { follow.tap() }
+        XCTAssertTrue(waitForLabel(follow, "Unfollow", timeout: 20))
+        tapLabel(app, liveList, timeout: 20)
+        let like = app.buttons["social.like"]; XCTAssertTrue(like.waitForExistence(timeout: 20))
+        if !like.isHittable { app.swipeUp() }
+        XCTAssertTrue(waitForValue(like, notEqualTo: "Loading", timeout: 30), "Thread did not load")
+        if (like.value as? String) == "Not liked" { like.tap() }
+        XCTAssertTrue(waitForValue(like, equalTo: "Liked", timeout: 20)); XCTAssertEqual(like.label, "1 like")
+        if !app.staticTexts["Live check comment"].exists {
+            let field = app.textFields["social.comment.text"]
+            let editor = field.exists ? field : app.textViews["social.comment.text"]
+            editor.tap(); editor.typeText("Live check comment")
+            if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+            app.buttons["social.comment.post"].tap()
+        }
+        XCTAssertTrue(app.staticTexts["Live check comment"].firstMatch.waitForExistence(timeout: 20))
+    }
+
+    @MainActor private func launchLiveSocial(personalLibrary: Bool = false, extra: [String] = []) throws -> XCUIApplication {
         #if targetEnvironment(simulator)
         throw XCTSkip("Live social checks need signed devices with distinct iCloud accounts.")
         #else
         guard ProcessInfo.processInfo.environment["WISHWELL_LIVE_SOCIAL"] == "1" else { throw XCTSkip("Set TEST_RUNNER_WISHWELL_LIVE_SOCIAL=1 to run live social checks.") }
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
-        let app = XCUIApplication(); app.launchArguments = [personalLibrary ? "--social-live-cloud" : "--social-live-ui"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = [personalLibrary ? "--social-live-cloud" : "--social-live-ui"] + extra; app.launch()
         XCTAssertTrue(app.buttons["list.add"].waitForExistence(timeout: 60))
         return app
         #endif
     }
     @MainActor private func openArea(_ app: XCUIApplication, _ name: String) {
         // An active search keeps the keyboard up and swallows the tab tap.
-        for label in ["Close", "Cancel"] where app.keyboards.count > 0 && app.buttons[label].exists { app.buttons[label].firstMatch.tap() }
+        if app.keyboards.count > 0, let label = ["Close", "Cancel"].first(where: { app.buttons[$0].exists }) {
+            let button = app.buttons[label].firstMatch
+            if button.isHittable { button.tap() }
+        }
         let tab = app.tabBars.buttons[name]
         if tab.waitForExistence(timeout: 5) { tab.tap() } else { app.buttons[name].firstMatch.tap() }
     }

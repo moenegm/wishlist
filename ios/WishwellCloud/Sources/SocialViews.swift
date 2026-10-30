@@ -27,12 +27,19 @@ extension SocialStore {
 /// Push alerts for follows, likes and comments. Asked for when a profile is published, the point where alerts become useful.
 @MainActor
 enum AlertPermission {
+    /// Live tests skip the permission prompt unless launched with --alerts, which the push alert tests use.
+    static func allowed(for social: SocialStore) -> Bool {
+        !social.isDemo && (!social.isLiveTest || ProcessInfo.processInfo.arguments.contains("--alerts"))
+    }
     static func request() async {
         let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
         if granted { UIApplication.shared.registerForRemoteNotifications() }
     }
     static func registerIfAllowed() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
+        #if DEBUG
+        print("Wishwell alerts: permission \(settings.authorizationStatus.rawValue)")
+        #endif
         if settings.authorizationStatus == .authorized { UIApplication.shared.registerForRemoteNotifications() }
     }
 }
@@ -147,7 +154,7 @@ struct PublicProfileEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Publish") { Task { await social.perform {
                         try await social.saveProfile(name: name, photo: includePhoto ? profiles.first?.photo : nil); dismiss()
-                        if !social.isDemo && !social.isLiveTest { await AlertPermission.request() }
+                        if AlertPermission.allowed(for: social) { await AlertPermission.request() }
                     } } }.disabled(social.busy || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("social.profile.publish")
                 }
             }.onAppear { name = social.me?.name ?? profiles.first?.displayName ?? "" }
