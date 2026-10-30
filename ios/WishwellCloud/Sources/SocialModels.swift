@@ -109,6 +109,8 @@ struct SocialComment: Identifiable {
     var author: PublicProfile
     var text: String
     var createdAt: Date
+    /// Shown straight away while it's still being saved.
+    var sending = false
 }
 struct SocialThread {
     /// True when the list is private: the owner can read what was said, but nobody can like or comment.

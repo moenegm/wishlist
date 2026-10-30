@@ -303,6 +303,10 @@ struct SocialThreadView: View {
     @State private var deleteID: String?
     @State private var reportID: String?
     @State private var savingLike = false
+    /// What this person just did. iCloud's search can take a few seconds to include a new like or comment,
+    /// so these are kept on screen until a refresh shows them.
+    @State private var likedHere: Bool?
+    @State private var postedHere: [SocialComment] = []
     @FocusState private var writing: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -313,16 +317,17 @@ struct SocialThreadView: View {
                 thread.liked = wanted; thread.likeCount += wanted ? 1 : -1
                 savingLike = true
                 Task {
-                    await social.perform { try await social.setLike(listID: listID, wishID: wishID, liked: wanted) }
+                    // Not routed through `perform`, so a like never waits behind another action.
+                    do { try await social.setLike(listID: listID, wishID: wishID, liked: wanted); likedHere = wanted }
+                    catch { thread.liked = !wanted; thread.likeCount += wanted ? -1 : 1; message = error.localizedDescription }
                     savingLike = false
-                    await load()
                 }
             } label: {
                 if loaded { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
                 else { Label { ProgressView().controlSize(.small) } icon: { Image(systemName: "heart") } }
             }
                 // Toggling before the thread loads would act on a placeholder state.
-                .disabled(social.busy || social.me == nil || !loaded || thread.paused)
+                .disabled(social.me == nil || !loaded || thread.paused || savingLike)
                 .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
                 .accessibilityIdentifier("social.like")
             Text("Comments").font(.system(.title2, design: .serif))
@@ -338,8 +343,9 @@ struct SocialThreadView: View {
                         } label: { Image(systemName: "ellipsis") }
                     }
                     Text(comment.text).textSelection(.enabled)
-                    Text(comment.createdAt, style: .relative).font(.caption).foregroundStyle(.secondary)
-                }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 16))
+                    if comment.sending { Text("Sending…").font(.caption).foregroundStyle(.secondary) }
+                    else { Text(comment.createdAt, style: .relative).font(.caption).foregroundStyle(.secondary) }
+                }.opacity(comment.sending ? 0.6 : 1).padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.background, in: RoundedRectangle(cornerRadius: 16))
             }
             if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
             if thread.paused {
@@ -347,9 +353,9 @@ struct SocialThreadView: View {
             } else if social.me != nil {
                 HStack(alignment: .bottom) {
                     TextField("Write a comment…", text: $bodyText, axis: .vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).focused($writing).accessibilityIdentifier("social.comment.text")
-                    Button("Post", systemImage: "arrow.up.circle.fill") {
-                        Task { await social.perform { try await social.comment(listID: listID, wishID: wishID, text: bodyText); bodyText = ""; await load() } }
-                    }.labelStyle(.iconOnly).disabled(social.busy || bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || bodyText.count > 500).accessibilityIdentifier("social.comment.post")
+                    Button("Post", systemImage: "arrow.up.circle.fill") { post() }
+                        .labelStyle(.iconOnly).font(.title2)
+                        .disabled(bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || bodyText.count > 500).accessibilityIdentifier("social.comment.post")
                 }
                 Text("\(bodyText.count)/500").font(.caption2).foregroundStyle(.secondary)
             } else { Text("Turn on Public account in Settings to join the conversation.").font(.caption).foregroundStyle(.secondary) }
@@ -363,11 +369,39 @@ struct SocialThreadView: View {
             }
             .sheet(isPresented: Binding(get: { reportID != nil }, set: { if !$0 { reportID = nil } })) { if let id = reportID { ReportView(id: id) } }
     }
+    /// The comment appears right away and is marked as sent once iCloud has it.
+    private func post() {
+        guard let me = social.me else { return }
+        let text = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let placeholder = SocialComment(id: "sending-\(UUID().uuidString)", author: me, text: text, createdAt: Date(), sending: true)
+        thread.comments.append(placeholder); bodyText = ""; writing = false
+        Task {
+            do {
+                let saved = try await social.comment(listID: listID, wishID: wishID, text: text)
+                postedHere.append(saved)
+                if let index = thread.comments.firstIndex(where: { $0.id == placeholder.id }) { thread.comments[index] = saved }
+            } catch {
+                thread.comments.removeAll { $0.id == placeholder.id }
+                bodyText = text; message = error.localizedDescription
+            }
+        }
+    }
     private func load() async {
         do {
             let fresh = try await social.thread(listID: listID, wishID: wishID)
             // A like that's still saving would otherwise flicker back for a moment.
-            if !savingLike { thread = fresh }
+            // A like or comment still saving, or too new for the search, would otherwise flicker out.
+            if !savingLike {
+                var merged = fresh
+                let known = Set(fresh.comments.map(\.id))
+                postedHere.removeAll { known.contains($0.id) }
+                merged.comments += postedHere + thread.comments.filter(\.sending)
+                if let likedHere {
+                    if merged.liked == likedHere { self.likedHere = nil }
+                    else { merged.liked = likedHere; merged.likeCount = max(0, merged.likeCount + (likedHere ? 1 : -1)) }
+                }
+                thread = merged
+            }
             message = nil; loaded = true
         } catch { thread = SocialThread(); message = error.localizedDescription; loaded = false }
     }

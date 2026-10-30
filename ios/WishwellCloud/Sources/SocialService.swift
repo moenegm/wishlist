@@ -296,10 +296,20 @@ import Observation
         thread.comments.sort { $0.createdAt < $1.createdAt }
         return thread
     }
+    /// A quicker check than `publicList` for likes and comments: one read of the list record, without the owner's profile.
+    private func sharedList(_ id: String) async throws -> PublicList? {
+        guard let row = try await fetch(id), row.kind == .list, !Self.isPaused(row), !hidden.contains(row.creator),
+              var list: PublicList = try? row.decode() else { return nil }
+        list.id = row.id; list.ownerID = row.creator
+        return list
+    }
     func setLike(listID: String, wishID: UUID?, liked: Bool) async throws {
         let user = try await actor()
-        guard me != nil, let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("Turn on your public account and open an available public wish first.") }
-        let rows = try await fetchRows(SocialQuery(kind: .like, creator: user, parent: listID))
+        // The list check and the search for this person's earlier like run side by side.
+        async let current = sharedList(listID)
+        async let earlier = fetchRows(SocialQuery(kind: .like, creator: user, parent: listID))
+        guard me != nil, let list = try await current, list.contains(wishID) else { throw WishwellError("Turn on your public account and open an available public wish first.") }
+        let rows = try await earlier
         let own = rows.filter {
             guard $0.creator == user, $0.parent == listID else { return false }
             guard let action = try? $0.decode(SocialAction.self) else { return false }
@@ -310,12 +320,14 @@ import Observation
             if own.isEmpty { _ = try await database.save(SocialRow(kind: .like, parent: listID, payload: encode(SocialAction(wishID: wishID)))) }
         } else { for row in own { try await database.delete(row) } }
     }
-    func comment(listID: String, wishID: UUID?, text: String) async throws {
+    @discardableResult
+    func comment(listID: String, wishID: UUID?, text: String) async throws -> SocialComment {
         let user = try await actor(); let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= 500 else { throw WishwellError("Comments must have 1–500 characters.") }
-        guard me != nil, let list = try await publicList(listID), list.contains(wishID) else { throw WishwellError("This shared wish is no longer available.") }
+        guard let me, let list = try await sharedList(listID), list.contains(wishID) else { throw WishwellError("This shared wish is no longer available.") }
         try await ensureActor(user)
-        _ = try await database.save(SocialRow(kind: .comment, parent: listID, payload: encode(SocialAction(wishID: wishID, text: text))))
+        let saved = try await database.save(SocialRow(kind: .comment, parent: listID, payload: encode(SocialAction(wishID: wishID, text: text))))
+        return SocialComment(id: saved.id, author: me, text: text, createdAt: saved.createdAt)
     }
     func deleteComment(_ id: String) async throws {
         let user = try await actor()
