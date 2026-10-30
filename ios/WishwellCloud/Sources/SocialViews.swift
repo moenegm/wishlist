@@ -317,12 +317,16 @@ struct SocialThreadView: View {
                     savingLike = false
                     await load()
                 }
-            } label: { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
+            } label: {
+                if loaded { Label("\(thread.likeCount) \(thread.likeCount == 1 ? "like" : "likes")", systemImage: thread.liked ? "heart.fill" : "heart") }
+                else { Label { ProgressView().controlSize(.small) } icon: { Image(systemName: "heart") } }
+            }
                 // Toggling before the thread loads would act on a placeholder state.
                 .disabled(social.busy || social.me == nil || !loaded || thread.paused)
                 .accessibilityValue(loaded ? (thread.liked ? "Liked" : "Not liked") : "Loading")
                 .accessibilityIdentifier("social.like")
             Text("Comments").font(.system(.title2, design: .serif))
+            if !loaded && message == nil { ProgressView().frame(maxWidth: .infinity, alignment: .leading) }
             ForEach(thread.comments) { comment in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

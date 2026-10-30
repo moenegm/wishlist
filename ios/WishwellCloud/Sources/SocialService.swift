@@ -98,7 +98,7 @@ import Observation
         let rows = try await fetchRows(SocialQuery(kind: .profile, creator: owner))
         let ordered = rows.filter { $0.creator == owner }.sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
         let profile = ordered.compactMap { try? profileValue($0) }.first
-        profileCache[owner] = (profile, Date())
+        if profile != nil { profileCache[owner] = (profile, Date()) }
         return profile
     }
     /// Looks up several people at once instead of one after another.
@@ -380,7 +380,7 @@ import Observation
                 for wish in list.wishes where wish.createdAt >= follow.createdAt {
                     let key = "wish-\(list.id)-\(wish.id)"
                     guard seen.insert(key).inserted else { continue }
-                    activity.append(SocialActivity(id: key, actor: author, message: "\(author.name) added \(wish.title)", list: list, wishID: wish.id, date: wish.createdAt, icon: "sparkles"))
+                    activity.append(SocialActivity(id: key, actor: author, message: "\(author.name) added \(wish.title)", list: list, date: wish.createdAt, icon: "sparkles"))
                 }
             }
         }
