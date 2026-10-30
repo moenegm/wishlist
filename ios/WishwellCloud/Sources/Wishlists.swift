@@ -110,7 +110,7 @@ struct ListDetail: View {
                 Menu {
                     Button("Edit wishlist", systemImage: "pencil") { editing = true }
                     ShareLink(item: shareText) { Label("Share a text copy", systemImage: "square.and.arrow.up") }
-                    Button("Delete wishlist", systemImage: "trash", role: .destructive) { deleting = true }.disabled(!(list.wishes ?? []).isEmpty)
+                    Button("Delete wishlist", systemImage: "trash", role: .destructive) { deleting = true }.accessibilityIdentifier("list.delete")
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("list.menu")
             }
             // Loads which wishes someone might be getting, once the public account is ready.
@@ -119,22 +119,25 @@ struct ListDetail: View {
             }
             .sheet(isPresented: $adding) { WishEditor(list: list) }
             .sheet(isPresented: $editing) { ListEditor(existing: list) }
-            .confirmationDialog("Delete this empty wishlist?", isPresented: $deleting, titleVisibility: .visible) {
+            .confirmationDialog(deleteTitle, isPresented: $deleting, titleVisibility: .visible) {
                 Button("Delete wishlist", role: .destructive) {
-                    guard (list.wishes ?? []).isEmpty else { error = "Move or delete the wishes in this list first."; return }
                     Task {
                         do {
                             // Deleting a list also removes its public record, including one kept while the list was private.
                             var record = list.publicRecordName
                             if record == nil && social.enabled && social.me != nil { record = try await social.ownListRecord(source: list.id)?.id }
                             if let record { try await social.unpublish(record) }
-                            guard (list.wishes ?? []).isEmpty else { throw WishwellError("Move or delete the wishes in this list first.") }
+                            // Its wishes go with it.
                             context.delete(list); try context.save(); dismiss()
                         } catch { context.rollback(); self.error = error.localizedDescription }
                     }
-                }
-            }
+                }.accessibilityIdentifier("list.confirmDelete")
+            } message: { Text(list.publicRecordName == nil ? "This can’t be undone." : "This can’t be undone. It’s also removed from your circle, along with anything people marked as getting.") }
             .alert("Couldn’t save", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("OK") { error = nil } } message: { Text(error ?? "") }
+    }
+    private var deleteTitle: String {
+        let count = list.wishes?.count ?? 0
+        return count == 0 ? "Delete “\(list.title)”?" : "Delete “\(list.title)” and its \(count) \(count == 1 ? "wish" : "wishes")?"
     }
     private func setPublic(_ on: Bool) {
         switching = on

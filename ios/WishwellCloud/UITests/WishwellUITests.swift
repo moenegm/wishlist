@@ -47,6 +47,15 @@ final class WishwellUITests: XCTestCase {
         XCTAssertEqual(sharing.value as? String, "0")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "1", timeout: 10), "The list did not become public")
         flip(sharing); XCTAssertTrue(waitFor(sharing, value: "0", timeout: 10), "The list did not become private")
+        // A list with wishes in it can be deleted, after saying how many go with it.
+        app.buttons["wish.add"].tap()
+        let wish = app.textFields["wish.title"]; XCTAssertTrue(wish.waitForExistence(timeout: 5)); wish.tap(); wish.typeText("Goes with the list")
+        app.buttons["wish.save"].tap()
+        app.buttons["list.menu"].tap(); app.buttons["list.delete"].tap()
+        XCTAssertTrue(app.staticTexts["Delete “\(name)” and its 1 wish?"].waitForExistence(timeout: 5))
+        app.buttons["list.confirmDelete"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["list.add"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch.exists)
     }
 
     @MainActor func testCreateCloudSyncFixture() throws {

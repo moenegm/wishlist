@@ -300,6 +300,25 @@ final class SocialTests: XCTestCase {
         expectEqual(database.rows.values.filter { $0.kind == .list }.count, 1)
     }
 
+    @MainActor func testWishesAddedAfterYouAddSomeoneShowAsNew() async throws {
+        let (database, owner, _, _) = try await fixture()
+        let friend = try await member(database)
+        database.user = "owner"
+        try await owner.follow(try unwrap(try await owner.profile(owner: "friend")), enabled: true)
+        database.user = "friend"
+        let list = WishList(title: "Birthday", category: "")
+        list.wishes = [try Wish(title: "Kite", options: [], list: list)]
+        _ = try await friend.publish(PublicList(list: list, profile: try unwrap(friend.me)), existingID: nil)
+        database.user = "owner"
+        let activity = try await owner.activity()
+        expectEqual(activity.map(\.message), ["Tomas added Kite"])
+        // A second load at the same time shares the first instead of starting over.
+        async let first = owner.activity()
+        async let second = owner.activity()
+        let (a, b) = try await (first, second)
+        expectEqual(a.map(\.id), b.map(\.id))
+    }
+
     @MainActor func testBlockedPeopleAreHiddenFromDiscoveryClaimsAndActivity() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)

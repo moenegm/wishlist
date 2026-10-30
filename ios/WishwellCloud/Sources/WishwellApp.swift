@@ -231,6 +231,7 @@ struct LibraryRoot: View {
             if social.enabled {
                 do {
                     social.didSave = { record, profile in await PushService.report(record: record, profile: profile) }
+                    await showDeliveredNotifications()
                     try await social.connect()
                     Task { await social.warmCircle() }
                     if social.me != nil, let user = social.actorID {
@@ -275,6 +276,7 @@ struct LibraryRoot: View {
         #endif
         .task(id: publicationFingerprint) { await updatePublicCopies() }
         .onChange(of: phase) { _, value in if value == .active { Task {
+            await showDeliveredNotifications()
             await updatePublicCopies()
             if social.enabled { do { social.activityRows = try await social.activity() } catch { social.publicationMessage = error.localizedDescription } }
         } } }
@@ -301,7 +303,17 @@ struct LibraryRoot: View {
     #endif
     private var unreadCount: Int {
         let read = Set(readState.map(\.id))
-        return social.activityRows.filter { !read.contains($0.id) }.count
+        return (social.deliveredRows + social.activityRows).filter { !read.contains($0.id) }.count
+    }
+    /// Notifications that already arrived as banners, so the Notifications screen shows them the moment it opens.
+    private func showDeliveredNotifications() async {
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        let known = Set(social.activityRows.map(\.message))
+        social.deliveredRows = delivered.compactMap { notification in
+            let body = notification.request.content.body
+            guard !body.isEmpty, !known.contains(body) else { return nil }
+            return SocialActivity(id: "banner-\(notification.request.identifier)", actor: nil, message: body, date: notification.date, icon: "bell.fill")
+        }
     }
     private func section(_ item: LibraryArea) -> some View {
         NavigationStack {

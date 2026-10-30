@@ -118,7 +118,7 @@ enum ClaimState: Equatable {
     /// What the owner sees: someone is, but not who.
     case someone
 }
-struct SocialActivity: Identifiable {
+struct SocialActivity: Identifiable, Codable {
     var id: String
     /// Nil when the person is kept private, as with gift claims.
     var actor: PublicProfile?

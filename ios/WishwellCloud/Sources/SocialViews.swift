@@ -482,7 +482,8 @@ struct ActivityView: View {
     @Query private var readState: [SocialReadState]
     @State private var message: String?
     @State private var loading = false
-    private var rows: [SocialActivity] { social.activityRows }
+    /// Banners that arrived show first, until the full details from iCloud replace them.
+    private var rows: [SocialActivity] { (social.deliveredRows + social.activityRows).sorted { $0.date > $1.date } }
     var body: some View {
         List {
             if let message { Text(message).foregroundStyle(.secondary) }
