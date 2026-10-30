@@ -18,12 +18,61 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return [.banner, .list, .sound]
     }
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        #if DEBUG
-        print("Wishwell alerts: registered for push")
-        #endif
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task { @MainActor in await PushService.save(token: token) }
     }
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("Wishwell alerts: push registration failed: \(error)")
+    }
+}
+
+/// Connects this phone to the website, which sends Wishwell's notifications through Apple.
+/// The website checks every reported record in iCloud and writes the message itself.
+@MainActor enum PushService {
+    private static let base = URL(string: "https://nujoomdigital.com/wishwell/push")!
+    private static let tokenKey = "WishwellPushToken", userKey = "WishwellPushUser"
+    /// Xcode builds use Apple's sandbox and iCloud's development data; App Store builds use production for both.
+    static var environment: String {
+        #if DEBUG
+        "development"
+        #else
+        "production"
+        #endif
+    }
+    static var registered: Bool { UserDefaults.standard.string(forKey: tokenKey) != nil }
+    static func save(token: String) async {
+        UserDefaults.standard.set(token, forKey: tokenKey)
+        if let user = UserDefaults.standard.string(forKey: userKey) { await register(user: user) }
+    }
+    /// Called once the public account is known; does nothing until the phone has a push token.
+    static func register(user: String) async {
+        UserDefaults.standard.set(user, forKey: userKey)
+        guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
+        await send("devices", method: "POST", ["token": token, "user": user, "environment": environment])
+    }
+    /// When the public account is turned off, this phone stops getting notifications.
+    static func unregister() async {
+        UserDefaults.standard.removeObject(forKey: userKey)
+        guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
+        await send("devices", method: "DELETE", ["token": token])
+    }
+    static func report(record: String, profile: String?) async {
+        var body = ["record": record, "environment": environment]
+        if let profile { body["profile"] = profile }
+        await send("events", method: "POST", body)
+    }
+    private static func send(_ path: String, method: String, _ body: [String: String]) async {
+        var request = URLRequest(url: base.appending(path: path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(body)
+        request.timeoutInterval = 15
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            #if DEBUG
+            print("Wishwell push \(path): \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            #endif
+        } catch { print("Wishwell push \(path) failed: \(error.localizedDescription)") }
     }
 }
 
@@ -70,7 +119,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             let seen = known()
             let fresh = try await social.activity().filter { !seen.contains($0.id) }
             guard !fresh.isEmpty else { return }
-            for row in fresh.prefix(5) {
+            // Once the website sends notifications, this check only keeps the app icon's count current.
+            for row in fresh.prefix(5) where !PushService.registered {
                 let content = UNMutableNotificationContent()
                 content.body = row.message; content.sound = .default
                 try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "ww-activity-\(row.id)", content: content, trigger: nil))
@@ -175,8 +225,10 @@ struct LibraryRoot: View {
             if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
                 do {
+                    social.didSave = { record, profile in await PushService.report(record: record, profile: profile) }
                     try await social.connect()
                     Task { await social.warmCircle() }
+                    if social.me != nil, let user = social.actorID { await PushService.register(user: user) }
                     social.activityRows = try await social.activity()
                     if social.me != nil && AlertPermission.allowed(for: social) { await AlertPermission.registerIfAllowed() }
                     #if DEBUG

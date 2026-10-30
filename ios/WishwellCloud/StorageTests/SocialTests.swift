@@ -97,32 +97,31 @@ final class SocialTests: XCTestCase {
         let lists = try await owner.lists(owner: "owner"); expectEqual(lists.count, 0)
     }
 
-    @MainActor func testAlertsFollowProfileAndPublishedListsOnly() async throws {
+    @MainActor func testOldICloudAlertSubscriptionsAreRemovedButOthersKept() async throws {
         let (database, owner, _, snapshot) = try await fixture()
-        try await owner.syncAlerts()
         let me = try unwrap(owner.me)
-        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
-        let listID = try await owner.publish(snapshot, existingID: nil)
-        try await owner.syncAlerts()
-        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .claim, parent: listID).id]))
-        database.alerts["owner"]?.insert("someone-elses-subscription")
-        try await owner.unpublish(listID)
-        try await owner.syncAlerts()
-        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id, "someone-elses-subscription"])
-        try await owner.removeProfile()
-        try await owner.syncAlerts()
+        database.alerts["owner"] = [SocialAlert(kind: .follow, parent: me.id).id, "someone-elses-subscription"]
+        _ = try await owner.publish(snapshot, existingID: nil)
         expectEqual(database.alerts["owner"], ["someone-elses-subscription"])
     }
 
-    @MainActor func testAlertsCoverAListTheQueryIndexHasNotCaughtUpWith() async throws {
+    @MainActor func testTheWebsiteIsToldAboutEachFollowAndClaimJustSaved() async throws {
         let (database, owner, _, snapshot) = try await fixture()
-        let me = try unwrap(owner.me)
-        database.laggingIndex = database.rows
-        let listID = try await owner.publish(snapshot, existingID: nil)
-        expectEqual(database.alerts["owner"], Set([SocialAlert(kind: .follow, parent: me.id).id, SocialAlert(kind: .claim, parent: listID).id]))
-        database.laggingIndex = database.rows
-        try await owner.unpublish(listID)
-        expectEqual(database.alerts["owner"], [SocialAlert(kind: .follow, parent: me.id).id])
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let wishID = try unwrap(snapshot.wishes.first?.id)
+        let friend = try await member(database)
+        var reported: [(String, String?)] = []
+        friend.didSave = { record, profile in reported.append((record, profile)) }
+        try await friend.follow(try unwrap(owner.me), enabled: true)
+        try await friend.follow(try unwrap(owner.me), enabled: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: true)
+        try await friend.setClaim(listID: id, wishID: wishID, on: false)
+        expectEqual(reported.count, 3)
+        let follow = try unwrap(database.rows.values.first { $0.kind == .follow })
+        let claim = try unwrap(database.rows.values.first { $0.kind == .claim })
+        expectEqual(reported.map(\.0), [follow.id, claim.id, claim.id])
+        expectEqual(reported.first?.1, friend.me?.id)
+        expectNil(reported.last?.1)
     }
 
     @MainActor func testSearchMatchesEveryTypedWord() async throws {

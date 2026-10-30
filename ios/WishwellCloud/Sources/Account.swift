@@ -132,6 +132,7 @@ struct SettingsView: View {
             .confirmationDialog("Turn off your public account?", isPresented: $turningOff, titleVisibility: .visible) {
                 Button("Turn off", role: .destructive) { Task { await social.perform {
                     try await social.removeProfile()
+                    await PushService.unregister()
                     for list in lists { list.publicRecordName = nil }
                     do { try context.save() } catch { context.rollback(); throw error }
                 } } }.accessibilityIdentifier("profile.confirmPrivate")
@@ -169,6 +170,7 @@ struct SettingsView: View {
         Task { await social.perform {
             try await social.saveProfile(name: profile.displayName, photo: profile.photo)
             if AlertPermission.allowed(for: social) { await AlertPermission.request() }
+            if let user = social.actorID { await PushService.register(user: user) }
         } }
     }
 }

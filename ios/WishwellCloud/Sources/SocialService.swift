@@ -13,6 +13,8 @@ import Observation
     var error: String?
     var busy = false
     var publicationMessage: String?
+    /// Told about each follow or gift claim just saved, so the website can notify the person it's for.
+    var didSave: ((_ record: String, _ profile: String?) async -> Void)?
     var activityRows: [SocialActivity] = []
     var refreshRevision = 0
     /// Lists made private on this device, by personal list ID. Reading a record by name is immediate,
@@ -86,19 +88,11 @@ import Observation
         me = try await profile(owner: user)
         await refreshAlerts()
     }
-    /// Keeps push subscriptions in step with the current profile and published lists.
-    /// `published` and `unpublished` name a list that just changed: CloudKit's query index can lag a save
-    /// or delete by several seconds, so the query alone would miss it.
+    /// Notifications now come from the website. This removes the iCloud alert subscriptions earlier versions made,
+    /// which never delivered and would otherwise double up if they started to.
     func syncAlerts(published: String? = nil, unpublished: String? = nil) async throws {
-        let user = try await actor()
-        var wanted: Set<SocialAlert> = []
-        if let me {
-            wanted.insert(SocialAlert(kind: .follow, parent: me.id))
-            var lists = Set(try await fetchRows(SocialQuery(kind: .list, creator: user)).filter { $0.creator == user && !Self.isPaused($0) }.map(\.id))
-            if let published { lists.insert(published) }
-            if let unpublished { lists.remove(unpublished) }
-            for id in lists { wanted.insert(SocialAlert(kind: .claim, parent: id)) }
-        }
+        _ = try await actor()
+        let wanted: Set<SocialAlert> = []
         let existing = try await database.alertSubscriptionIDs().filter { $0.hasPrefix(SocialAlert.prefix) }
         for id in existing.subtracting(wanted.map(\.id)) { try await database.unsubscribeAlert(id) }
         for alert in wanted where !existing.contains(alert.id) { try await database.subscribeAlert(alert) }
@@ -298,7 +292,10 @@ import Observation
         try await ensureActor(user)
         if enabled {
             guard me != nil else { throw WishwellError("Turn on your public account before following people.") }
-            if existing.isEmpty { _ = try await database.save(SocialRow(kind: .follow, parent: person.id, payload: encode(SocialAction()))) }
+            if existing.isEmpty {
+                let saved = try await database.save(SocialRow(kind: .follow, parent: person.id, payload: encode(SocialAction())))
+                await didSave?(saved.id, me?.id)
+            }
             followingOwners?.insert(person.ownerID)
         } else {
             for row in existing { try await database.delete(row) }
@@ -350,14 +347,17 @@ import Observation
         let own = rows.filter { $0.row.creator == user }.map(\.row)
         if on, var first = own.first {
             first.payload = try encode(GiftClaim(wishID: wishID, active: true))
-            _ = try await database.save(first)
+            let saved = try await database.save(first)
+            await didSave?(saved.id, nil)
         } else if !on {
             for var row in own where (try? row.decode(GiftClaim.self))?.active == true {
                 row.payload = try encode(GiftClaim(wishID: wishID, active: false))
-                _ = try await database.save(row)
+                let saved = try await database.save(row)
+                await didSave?(saved.id, nil)
             }
         } else {
-            _ = try await database.save(SocialRow(kind: .claim, parent: listID, payload: encode(GiftClaim(wishID: wishID, active: true))))
+            let saved = try await database.save(SocialRow(kind: .claim, parent: listID, payload: encode(GiftClaim(wishID: wishID, active: true))))
+            await didSave?(saved.id, nil)
         }
         var states = claimCache[listID] ?? [:]
         states[wishID] = on ? .mine : nil
