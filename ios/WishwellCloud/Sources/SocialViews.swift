@@ -38,7 +38,7 @@ enum AlertPermission {
     static func registerIfAllowed() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         #if DEBUG
-        print("Wishwell alerts: permission \(settings.authorizationStatus.rawValue)")
+        print("Wishwell alerts: permission \(settings.authorizationStatus.rawValue) alert \(settings.alertSetting.rawValue) center \(settings.notificationCenterSetting.rawValue) lock \(settings.lockScreenSetting.rawValue) style \(settings.alertStyle.rawValue)")
         #endif
         if settings.authorizationStatus == .authorized { UIApplication.shared.registerForRemoteNotifications() }
     }

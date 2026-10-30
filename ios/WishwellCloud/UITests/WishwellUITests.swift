@@ -209,14 +209,19 @@ final class WishwellUITests: XCTestCase {
         unblockEveryone(app)
         followLikeAndComment(app)
         // A fresh comment each run, so a rerun still creates a record that should raise an alert.
-        let field = app.textFields["social.comment.text"]
-        let editor = field.exists ? field : app.textViews["social.comment.text"]
-        let text = "Alert check \(Int(Date().timeIntervalSince1970))"
-        editor.tap(); editor.typeText(text)
-        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
-        app.buttons["social.comment.post"].tap()
-        XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20))
+        try postFreshComment(app)
         attach(app, "Peer followed, liked and commented")
+    }
+
+    /// Same account on a second device: comments on the owner's own list.
+    @MainActor func testLiveAlerts2bOwnerCommentsFromSecondDevice() throws {
+        let app = try launchLiveSocial()
+        openArea(app, "Circle")
+        search(app, "Wishwell Owner")
+        tapLabel(app, ownerName, timeout: 30)
+        tapLabel(app, liveList, timeout: 20)
+        try postFreshComment(app)
+        attach(app, "Owner commented from second device")
     }
 
     /// Doesn't launch Wishwell: the alerts have to arrive while it's closed.
@@ -254,6 +259,18 @@ final class WishwellUITests: XCTestCase {
         let publish = app.buttons["social.list.publish"]; XCTAssertTrue(publish.waitForExistence(timeout: 10)); publish.tap()
         app.buttons["social.list.confirmPublish"].firstMatch.tap()
         XCTAssertTrue(app.buttons["social.list.private"].waitForExistence(timeout: 30), "Publishing to development CloudKit did not finish")
+    }
+
+    @MainActor private func postFreshComment(_ app: XCUIApplication) throws {
+        let editor = app.descendants(matching: .any).matching(identifier: "social.comment.text").firstMatch
+        if !editor.waitForExistence(timeout: 20) { attach(app, "No comment box") }
+        XCTAssertTrue(editor.exists)
+        if !editor.isHittable { app.swipeUp() }
+        let text = "Alert check \(Int(Date().timeIntervalSince1970))"
+        editor.tap(); editor.typeText(text)
+        if app.buttons["social.keyboard.done"].exists { app.buttons["social.keyboard.done"].tap() }
+        app.buttons["social.comment.post"].tap()
+        XCTAssertTrue(app.staticTexts[text].firstMatch.waitForExistence(timeout: 20))
     }
 
     @MainActor private func followLikeAndComment(_ app: XCUIApplication) {
