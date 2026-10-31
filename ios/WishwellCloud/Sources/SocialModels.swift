@@ -1,0 +1,164 @@
+import Foundation
+import SwiftData
+
+enum SocialKind: String, Codable, CaseIterable {
+    // Gift claims live in the WWLike record type, which already has its permissions set up; likes are no longer used.
+    case profile = "WWProfile", list = "WWList", follow = "WWFollow", claim = "WWLike", report = "WWReport"
+}
+
+struct SocialRow: Identifiable {
+    var id: String = UUID().uuidString
+    var kind: SocialKind
+    var creator: String = ""
+    var parent: String?
+    var sourceID: String?
+    var searchTokens: [String] = []
+    var payload: Data
+    var createdAt: Date = Date()
+    var modifiedAt: Date = Date()
+    var systemFields: Data?
+    func decode<T: Decodable>(_ type: T.Type = T.self) throws -> T { try JSONDecoder().decode(type, from: payload) }
+}
+
+struct SocialQuery: Equatable {
+    var kind: SocialKind
+    var creator: String?
+    var parent: String?
+    var sourceID: String?
+    var searchToken: String?
+}
+
+@MainActor protocol SocialDatabase {
+    func userID() async throws -> String
+    func record(_ id: String) async throws -> SocialRow?
+    func query(_ query: SocialQuery) async throws -> [SocialRow]
+    func save(_ row: SocialRow) async throws -> SocialRow
+    func delete(_ row: SocialRow) async throws
+    func alertSubscriptionIDs() async throws -> Set<String>
+    func subscribeAlert(_ alert: SocialAlert) async throws
+    func unsubscribeAlert(_ id: String) async throws
+}
+
+/// A push alert for new interactions on one of the current person's public records.
+/// The text stays generic so no names or content pass through the push service.
+struct SocialAlert: Hashable {
+    static let prefix = "ww-alert-"
+    var kind: SocialKind
+    var parent: String
+    var id: String { "\(Self.prefix)\(kind.rawValue)-\(parent)" }
+    var message: String {
+        switch kind {
+        case .follow: "Someone added you to their circle on Wishwell."
+        default: "Someone might be getting one of your wishes."
+        }
+    }
+}
+
+extension SocialDatabase {
+    func alertSubscriptionIDs() async throws -> Set<String> { [] }
+    func subscribeAlert(_ alert: SocialAlert) async throws {}
+    func unsubscribeAlert(_ id: String) async throws {}
+}
+
+/// Words that can't go on a public profile or list. Matched as whole words, so "Scunthorpe" or "cocktail" are fine.
+enum ContentFilter {
+    private static let words: Set<String> = [
+        "fuck", "fucks", "fucked", "fucking", "fucker", "motherfucker", "shit", "shitty", "bullshit", "bitch", "bitches",
+        "bastard", "cunt", "cunts", "asshole", "assholes", "whore", "whores", "slut", "sluts", "twat", "wanker", "cock", "cocks",
+        "pussy", "porn", "porno", "rape", "rapist", "nigger", "niggers", "nigga", "niggas", "faggot", "faggots", "fag", "fags",
+        "retard", "retards", "kike", "kikes", "spic", "spics", "chink", "chinks", "wetback", "tranny", "trannies", "dyke", "dykes",
+        "nazi", "nazis", "hitler", "kys",
+    ]
+    static func allows(_ texts: [String]) -> Bool {
+        !texts.contains { text in
+            text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .components(separatedBy: CharacterSet.alphanumerics.inverted).contains(where: words.contains)
+        }
+    }
+}
+
+struct PublicProfile: Codable, Identifiable, Hashable {
+    var id: String
+    var ownerID: String
+    var name: String
+    var photo: Data?
+    static func tokens(for name: String) -> [String] {
+        let words = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX")).split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        return Array(Set(words.flatMap { word in (1...max(1, min(40, word.count))).map { String(word.prefix($0)) } })).sorted()
+    }
+}
+
+struct PublicWish: Codable, Identifiable, Hashable {
+    var id: UUID
+    var title: String
+    var fulfilled: Bool
+    var options: [ShoppingOption]
+    var createdAt: Date
+}
+
+struct PublicList: Codable, Identifiable, Hashable {
+    var id: String
+    var ownerID: String
+    var profileID: String
+    var sourceID: UUID
+    var title: String
+    var category: String
+    var wishes: [PublicWish]
+    @MainActor init(list: WishList, profile: PublicProfile, id: String = UUID().uuidString) {
+        self.id = id; ownerID = profile.ownerID; profileID = profile.id; sourceID = list.id
+        title = list.title; category = list.category
+        wishes = list.sortedWishes.map { PublicWish(id: $0.id, title: $0.title, fulfilled: $0.fulfilled, options: $0.options, createdAt: $0.createdAt) }
+    }
+    func contains(_ wishID: UUID?) -> Bool { wishID == nil || wishes.contains { $0.id == wishID } }
+}
+
+/// What a public list record holds while its owner has made the list private.
+/// The record stays so likes and comments attached to it survive, but the list itself is no longer shared.
+struct PausedList: Codable {
+    var paused: Bool
+    /// Only the IDs of the wishes still on the list, no titles or details, so the website can confirm a wish
+    /// was really removed before telling the person getting it.
+    var wishIDs: [UUID]?
+}
+
+struct SocialAction: Codable {
+    var wishID: UUID?
+    var text: String = ""
+}
+/// Someone marking a wish as one they're getting. Old likes in the same record type have no `active` field, so they never decode as claims.
+struct GiftClaim: Codable {
+    var wishID: UUID
+    var active: Bool
+}
+enum ClaimState: Equatable {
+    case mine
+    /// Another person, by name; only people other than the wish's owner see this.
+    case other(String)
+    /// What the owner sees: someone is, but not who.
+    case someone
+}
+struct SocialActivity: Identifiable, Codable {
+    var id: String
+    /// Nil when the person is kept private, as with gift claims.
+    var actor: PublicProfile?
+    var message: String
+    var list: PublicList?
+    /// The wish this is about; nil when it's about the whole list.
+    var wishID: UUID? = nil
+    /// For a notification shown from its banner before the full details load: where tapping it should go.
+    var linkListID: String? = nil
+    var linkProfileID: String? = nil
+    var date: Date
+    var icon: String
+}
+
+@Model final class SocialReadState {
+    var id: String = ""
+    var readAt: Date = Date()
+    init(id: String) { self.id = id }
+}
+@Model final class HiddenPerson {
+    var ownerID: String = ""
+    var createdAt: Date = Date()
+    init(ownerID: String) { self.ownerID = ownerID }
+}
