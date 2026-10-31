@@ -411,6 +411,25 @@ final class SocialTests: XCTestCase {
         await rejects { _ = try await database.record(reportID) }
         expectTrue(try await database.query(SocialQuery(kind: .report)).isEmpty)
     }
+    @MainActor func testEveryReportIsPassedOnSoItReachesWishwell() async throws {
+        let (database, owner, _, snapshot) = try await fixture()
+        let id = try await owner.publish(snapshot, existingID: nil)
+        let friend = try await member(database)
+        var passed: [String] = []
+        friend.didReport = { target, reason in passed.append("\(target) \(reason)") }
+        try await friend.report(id, reason: "Rude title")
+        expectEqual(passed, ["\(id) Rude title"])
+    }
+    @MainActor func testOffensiveWordsCannotGoPublic() async throws {
+        let (_, owner, privateList, _) = try await fixture()
+        await rejects { try await owner.saveProfile(name: "Big Shit", photo: nil) }
+        expectEqual(owner.me?.name, "Moe")
+        privateList.wishes?.first?.title = "fucking chair"
+        await rejects { _ = try await owner.publish(PublicList(list: privateList, profile: try self.unwrap(owner.me)), existingID: nil) }
+        // Whole words only: these are fine.
+        XCTAssertTrue(ContentFilter.allows(["Scunthorpe mug", "Cocktail shaker", "Dick Francis novel", "Classic"]))
+        XCTAssertFalse(ContentFilter.allows(["nice", "FUCK this"]))
+    }
     @MainActor func testDuplicateClaimsShowOnceAndUndoingClearsEveryCopy() async throws {
         let (database, owner, _, snapshot) = try await fixture()
         let id = try await owner.publish(snapshot, existingID: nil)

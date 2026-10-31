@@ -81,6 +81,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         if let profile { body["profile"] = profile }
         await send("events", method: "POST", body)
     }
+    /// Emails a report to Wishwell, so it's looked at the same day instead of waiting in iCloud.
+    static func flag(_ target: String, reason: String) async {
+        await send("reports", method: "POST", ["target": target, "reason": reason, "environment": environment])
+    }
     private static func send(_ path: String, method: String, _ body: [String: String]) async {
         var request = URLRequest(url: base.appending(path: path))
         request.httpMethod = method
@@ -249,7 +253,10 @@ struct LibraryRoot: View {
             if cloud.localOnly && !social.isDemo && !social.isLiveTest { social.enabled = false }
             if social.enabled {
                 do {
-                    if !social.isDemo { social.didSave = { record, profile in await PushService.report(record: record, profile: profile) } }
+                    if !social.isDemo {
+                        social.didSave = { record, profile in await PushService.report(record: record, profile: profile) }
+                        social.didReport = { target, reason in await PushService.flag(target, reason: reason) }
+                    }
                     await showDeliveredNotifications()
                     try await social.connect()
                     Task { await social.warmCircle() }

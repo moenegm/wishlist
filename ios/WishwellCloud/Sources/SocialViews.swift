@@ -266,9 +266,11 @@ struct PublicPersonView: View {
                 Button("Block", role: .destructive) {
                     context.insert(HiddenPerson(ownerID: person.ownerID))
                     do { try context.save(); social.hidden.insert(person.ownerID); dismiss() }
-                    catch { context.rollback(); social.error = error.localizedDescription }
+                    catch { context.rollback(); social.error = error.localizedDescription; return }
+                    let id = person.id
+                    Task { try? await social.report(id, reason: "Blocked by a member") }
                 }.accessibilityIdentifier("social.person.confirmBlock")
-            } message: { Text("Their content and interactions will be hidden on your devices. Anything you publish remains public. You can unblock them in Settings.") }
+            } message: { Text("Their profile and lists will be hidden from you, and we'll be told so we can check their content. You can unblock them in Settings.") }
             .task { await load() }.refreshable { await load() }
     }
     /// Changes at once; goes back only if saving fails.

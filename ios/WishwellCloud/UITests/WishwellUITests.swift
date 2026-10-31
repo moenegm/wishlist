@@ -325,6 +325,9 @@ final class WishwellUITests: XCTestCase {
         }
         if account.value as? String == "1" { return }
         flip(account)
+        // The community rules show the first time an account goes public on this device.
+        let agree = app.buttons["profile.acceptRules"]
+        if agree.waitForExistence(timeout: 3) { agree.tap() }
         XCTAssertTrue(waitFor(account, value: "1", timeout: 30), "Turning on the public account did not finish")
     }
     @MainActor private func unblockEveryone(_ app: XCUIApplication) {

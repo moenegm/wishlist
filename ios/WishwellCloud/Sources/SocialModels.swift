@@ -60,6 +60,23 @@ extension SocialDatabase {
     func unsubscribeAlert(_ id: String) async throws {}
 }
 
+/// Words that can't go on a public profile or list. Matched as whole words, so "Scunthorpe" or "cocktail" are fine.
+enum ContentFilter {
+    private static let words: Set<String> = [
+        "fuck", "fucks", "fucked", "fucking", "fucker", "motherfucker", "shit", "shitty", "bullshit", "bitch", "bitches",
+        "bastard", "cunt", "cunts", "asshole", "assholes", "whore", "whores", "slut", "sluts", "twat", "wanker", "cock", "cocks",
+        "pussy", "porn", "porno", "rape", "rapist", "nigger", "niggers", "nigga", "niggas", "faggot", "faggots", "fag", "fags",
+        "retard", "retards", "kike", "kikes", "spic", "spics", "chink", "chinks", "wetback", "tranny", "trannies", "dyke", "dykes",
+        "nazi", "nazis", "hitler", "kys",
+    ]
+    static func allows(_ texts: [String]) -> Bool {
+        !texts.contains { text in
+            text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .components(separatedBy: CharacterSet.alphanumerics.inverted).contains(where: words.contains)
+        }
+    }
+}
+
 struct PublicProfile: Codable, Identifiable, Hashable {
     var id: String
     var ownerID: String

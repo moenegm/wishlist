@@ -30,6 +30,8 @@ struct SettingsView: View {
     @State private var document = BackupDocument()
     @State private var message: String?
     @State private var turningOff = false
+    @State private var readingRules = false
+    @AppStorage("acceptedCommunityRules") private var acceptedRules = false
     @FocusState private var editingName: Bool
     var body: some View {
         Form {
@@ -136,8 +138,14 @@ struct SettingsView: View {
                     for list in lists { list.publicRecordName = nil }
                     do { try context.save() } catch { context.rollback(); throw error }
                 } } }.accessibilityIdentifier("profile.confirmPrivate")
-            } message: { Text("This removes your public profile, makes your public wishlists private, and deletes the follows, likes, and comments you made. Your wishlists stay intact on your devices.") }
+            } message: { Text("This removes your public profile, makes your public wishlists private, and removes the people in your circle and any gifts you marked. Your wishlists stay on your devices.") }
             .alert("Wishwell", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) { Button("OK") { message = nil } } message: { Text(message ?? "") }
+            .alert("Community rules", isPresented: $readingRules) {
+                Button("Agree") { acceptedRules = true; setPublic(true) }.accessibilityIdentifier("profile.acceptRules")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your name, photo and public wishlists can be seen by other people. Don't post anything offensive, hateful, sexual, violent or illegal, or anything that harasses someone. There's no tolerance for it: we look at every report within 24 hours, remove content that breaks these rules and remove the account that posted it.")
+            }
     }
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var nameChanged: Bool { trimmedName != (profiles.first?.displayName ?? "") }
@@ -167,6 +175,7 @@ struct SettingsView: View {
         guard on else { turningOff = true; return }
         if nameChanged { saveProfile() }
         guard let profile = profiles.first, !profile.displayName.isEmpty else { message = "Add your name first, so people know who you are."; return }
+        guard acceptedRules else { readingRules = true; return }
         Task { await social.perform {
             try await social.saveProfile(name: profile.displayName, photo: profile.photo)
             if AlertPermission.allowed(for: social) { await AlertPermission.request() }

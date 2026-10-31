@@ -15,6 +15,8 @@ import Observation
     var publicationMessage: String?
     /// Told about each follow or gift claim just saved, so the website can notify the person it's for.
     var didSave: ((_ record: String, _ profile: String?) async -> Void)?
+    /// Set by the app so every report is emailed to Wishwell.
+    var didReport: ((_ target: String, _ reason: String) async -> Void)?
     var activityRows: [SocialActivity] = []
     var refreshRevision = 0
     /// Lists made private on this device, by personal list ID. Reading a record by name is immediate,
@@ -187,6 +189,7 @@ import Observation
         let user = try await actor()
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= 80, (photo?.count ?? 0) < 400_000 else { throw WishwellError("Use a name up to 80 characters and a smaller profile photo.") }
+        guard ContentFilter.allows([trimmed]) else { throw WishwellError("That name has words that aren't allowed on Wishwell. Please choose another.") }
         var row: SocialRow
         if let existing = try await profile(owner: user), let stored = try await fetch(existing.id) { row = stored }
         else { row = SocialRow(kind: .profile, payload: Data()) }
@@ -250,6 +253,8 @@ import Observation
     func publish(_ snapshot: PublicList, existingID: String?) async throws -> String {
         let user = try await actor()
         guard let me, me.ownerID == user, snapshot.ownerID == user, snapshot.profileID == me.id else { throw WishwellError("Turn on your public account before sharing a wishlist.") }
+        let text = [snapshot.title, snapshot.category] + snapshot.wishes.flatMap { [$0.title] + $0.options.map(\.location) }
+        guard ContentFilter.allows(text) else { throw WishwellError("This wishlist has words that aren't allowed on public lists. Edit them and try again.") }
         let payload = try encode(snapshot)
         guard payload.count < 750_000 else { throw WishwellError("This wishlist is too large to publish as one shared list.") }
         var row: SocialRow
@@ -442,6 +447,7 @@ import Observation
         let payload = try encode(["target": target.id, "kind": target.kind.rawValue, "reason": reason])
         try await ensureActor(user)
         _ = try await database.save(SocialRow(kind: .report, payload: payload))
+        await didReport?(target.id, reason)
     }
     func removeProfile() async throws {
         let user = try await actor()
