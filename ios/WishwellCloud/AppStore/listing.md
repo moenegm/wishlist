@@ -4,7 +4,9 @@ Draft text for App Store Connect. Character limits are Apple's.
 
 ## Name (30)
 
-Wishwell
+Wishwell - Wish Lists
+
+The name under the icon stays Wishwell. "Wishwell" on its own is already taken on the App Store.
 
 ## Subtitle (30)
 
