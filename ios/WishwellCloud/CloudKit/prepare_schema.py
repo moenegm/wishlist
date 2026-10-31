@@ -13,7 +13,7 @@ def prepare(existing: str, social: str) -> str:
     if re.search(r'GRANT\s+(?:WRITE|CREATE)(?:\s*,\s*\w+)*\s+TO\s+"_world"', social, re.IGNORECASE):
         raise ValueError("World write/create permissions are not permitted.")
     types = set(re.findall(r"RECORD\s+TYPE\s+(\w+)", social))
-    if types != {"WWProfile", "WWList", "WWFollow", "WWLike", "WWComment", "WWReport"}:
+    if types != {"WWProfile", "WWList", "WWFollow", "WWLike", "WWReport"}:
         raise ValueError("The social fragment has unexpected record types.")
     body = re.sub(r"^\s*DEFINE\s+SCHEMA\s*", "", social, count=1)
     # Preserve the complete export, including private SwiftData types, fields, roles, and indexes.

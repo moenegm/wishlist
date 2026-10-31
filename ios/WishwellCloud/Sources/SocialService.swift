@@ -446,7 +446,7 @@ import Observation
     func removeProfile() async throws {
         let user = try await actor()
         let profiles = try await fetchRows(SocialQuery(kind: .profile, creator: user))
-        for kind in [SocialKind.claim, .comment, .follow] {
+        for kind in [SocialKind.claim, .follow] {
             let rows = try await fetchRows(SocialQuery(kind: kind, creator: user))
             for row in rows where row.creator == user { try await ensureActor(user); try await database.delete(row) }
         }

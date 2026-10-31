@@ -596,7 +596,7 @@ struct PublicSwitch: View {
     }
     private var note: String {
         if !social.enabled || social.me == nil { return "Turn on Public account in Settings to share wishlists." }
-        return isOn ? "People using Wishwell can see this list, its wishes and prices, and like or comment on it." : "Only you can see this list."
+        return isOn ? "People using Wishwell can see this list, its wishes and prices, and say when they're getting you something." : "Only you can see this list."
     }
 }
 
@@ -631,7 +631,7 @@ struct LiveSocialCheckView: View {
     @MainActor private func cleanupFixtures(user: String, delete: Bool) async throws {
         var found: [SocialRow] = []
         // Children first, so a cascade never races the explicit deletes that follow.
-        for kind in [SocialKind.claim, .comment, .follow, .report, .list, .profile] {
+        for kind in [SocialKind.claim, .follow, .report, .list, .profile] {
             found += try await database.query(SocialQuery(kind: kind, creator: user)).filter { $0.creator == user && SocialStore.isDiagnosticFixture($0.id) }
         }
         note("Found \(found.count) synthetic records owned by this account")
@@ -691,7 +691,7 @@ struct LiveSocialCheckView: View {
                 var remaining = 0
                 for id in ids { if try await database.record(id) != nil { remaining += 1 } }
                 if remaining == 0 {
-                    note("COMPLETE: unpublished root and the other account's like/comment are absent on Apple's service.")
+                    note("COMPLETE: unpublished root and the other account's claim is absent on Apple's service.")
                     return true
                 }
                 if attempt == 0 { note("Waiting for asynchronous CloudKit cascade…") }
@@ -738,14 +738,11 @@ struct LiveSocialCheckView: View {
         note("PASS: foreign report hidden from direct fetch and creator query")
         _ = try await database.save(SocialRow(id: prefix + "-peer-follow", kind: .follow, parent: profileID, payload: encoder.encode(SocialAction())))
         let like = try await database.save(SocialRow(id: prefix + "-peer-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
-        let comment = try await database.save(SocialRow(id: prefix + "-peer-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cross-account comment"))))
-        try require(like.creator == user && comment.creator == user, "Interaction creator metadata did not match.")
-        try require(try await database.record(comment.id) != nil, "Own comment on peer list could not be read.")
-        try await database.delete(comment)
+        try require(like.creator == user, "Interaction creator metadata did not match.")
+        try require(try await database.record(like.id) != nil, "Own claim on peer list could not be read.")
         try await database.delete(like)
-        note("PASS: follow, like/comment on peer list, and delete own interactions")
+        note("PASS: follow, claim on peer list, and delete own interactions")
         _ = try await database.save(SocialRow(id: prefix + "-cascade-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
-        _ = try await database.save(SocialRow(id: prefix + "-cascade-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic cascade check"))))
         note("Prepared synthetic interactions for cross-account cascade verification")
         note("COMPLETE: first-account and cross-account checks passed. Reciprocal checks and cascade removal remain.")
     }
@@ -765,23 +762,6 @@ struct LiveSocialCheckView: View {
                 note("PASS: removed \(removed) schema placeholder records.")
                 if let failure { note("FAIL: \(failure.domain) \(failure.code) \(failure.userInfo)"); return }
                 note("COMPLETE: private SwiftData record types and fields initialized in development.")
-                return
-            }
-            if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--alert-probe") {
-                // Unfiltered comment subscription, to tell a filter problem from a delivery problem.
-                let database = CKContainer(identifier: CloudStore.containerID).publicCloudDatabase
-                let id = "ww-probe-comment"
-                if ProcessInfo.processInfo.arguments.dropFirst(index + 1).first == "off" {
-                    _ = try await database.deleteSubscription(withID: id)
-                    note("COMPLETE: probe subscription removed.")
-                } else {
-                    let probe = CKQuerySubscription(recordType: SocialKind.comment.rawValue, predicate: NSPredicate(value: true), subscriptionID: id, options: .firesOnRecordCreation)
-                    probe.zoneID = CKRecordZone.default().zoneID
-                    let info = CKSubscription.NotificationInfo(); info.alertBody = "Probe: a comment was created."; info.soundName = "default"
-                    probe.notificationInfo = info
-                    _ = try await database.save(probe)
-                    note("COMPLETE: probe subscription saved.")
-                }
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("--remove-schema-placeholders") {
@@ -810,8 +790,7 @@ struct LiveSocialCheckView: View {
             try require(list.creator == user, "List creator metadata did not match.")
             note("PASS: publish synthetic list")
             _ = try await database.save(SocialRow(id: prefix + "-like", kind: .claim, parent: listID, payload: encoder.encode(SocialAction())))
-            _ = try await database.save(SocialRow(id: prefix + "-comment", kind: .comment, parent: listID, payload: encoder.encode(SocialAction(text: "Synthetic permission check"))))
-            note("PASS: create own like and comment")
+            note("PASS: create own claim")
             _ = try await database.save(SocialRow(id: reportID, kind: .report, payload: encoder.encode(["target": listID, "reason": "Synthetic permission test; no moderation action needed"])))
             try require(try await database.record(reportID) != nil, "Own report could not be read.")
             note("PASS: create and read own report")

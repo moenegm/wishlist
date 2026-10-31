@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UNUserNotificationCenter.current().delegate = self
         return true
     }
-    /// Shows alerts while the app is open too, so a follow, like or comment is never silently dropped.
+    /// Shows alerts while the app is open too, so a notification is never silently dropped.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         #if DEBUG
         print("Wishwell alerts: received \(notification.request.content.body)")

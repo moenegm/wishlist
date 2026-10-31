@@ -2,13 +2,13 @@
 
 Social features are on (`WishwellSocialEnabled` in `Info.plist`). Personal iCloud sync does not require this social schema. Neither a successful build nor the isolated social tests prove the permissions on Apple's actual service.
 
-How the record types are used today: `WWProfile` is a public account, `WWList` a public list (or, while the list is private, a placeholder holding only its wish IDs), `WWFollow` someone added to a circle, and `WWLike` an "I'm getting this" mark (`GiftClaim` payload; old likes don't decode as claims). `WWComment` is no longer written; leftover comments are removed with a public account. The sections below the schema are the history of how the permissions were checked, including the earlier likes and comments.
+How the record types are used today: `WWProfile` is a public account, `WWList` a public list (or, while the list is private, a placeholder holding only its wish IDs), `WWFollow` someone added to a circle, and `WWLike` an "I'm getting this" mark (`GiftClaim` payload; old likes don't decode as claims). `WWComment` was removed before the schema went to production. The sections below the schema are the history of how the permissions were checked, including the earlier likes and comments.
 
-`social.ckdb` defines six public record types. The common `payload` contains JSON. Parent references use `deleteSelf`; Creator identity and creation time come from CloudKit system metadata, not the JSON payload.
+`social.ckdb` defines five public record types. The common `payload` contains JSON. Parent references use `deleteSelf`; Creator identity and creation time come from CloudKit system metadata, not the JSON payload.
 
 | Type | Read | Create | Write/delete |
 | --- | --- | --- | --- |
-| WWProfile, WWList, WWFollow, WWLike, WWComment | World | Authenticated | Creator |
+| WWProfile, WWList, WWFollow, WWLike | World | Authenticated | Creator |
 | WWReport | Creator, Moderator | Authenticated | Creator, Moderator |
 
 Only explicitly published profiles and wishlist snapshots enter these types. Private SwiftData records remain in the private database. Reports must never be granted World or general Authenticated read access. Assign the Moderator role only to the account responsible for reviewing reports. Use CloudKit Console's report records as the moderation queue; confirm its access before enabling the reporting UI for real users.

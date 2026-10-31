@@ -3,8 +3,7 @@ import SwiftData
 
 enum SocialKind: String, Codable, CaseIterable {
     // Gift claims live in the WWLike record type, which already has its permissions set up; likes are no longer used.
-    // WWComment stays only so leftover comments are removed with a public profile.
-    case profile = "WWProfile", list = "WWList", follow = "WWFollow", claim = "WWLike", comment = "WWComment", report = "WWReport"
+    case profile = "WWProfile", list = "WWList", follow = "WWFollow", claim = "WWLike", report = "WWReport"
 }
 
 struct SocialRow: Identifiable {
@@ -127,7 +126,7 @@ struct SocialActivity: Identifiable, Codable {
     var actor: PublicProfile?
     var message: String
     var list: PublicList?
-    /// The wish a like or comment was on; nil when it was on the whole list.
+    /// The wish this is about; nil when it's about the whole list.
     var wishID: UUID? = nil
     /// For a notification shown from its banner before the full details load: where tapping it should go.
     var linkListID: String? = nil
