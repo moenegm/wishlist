@@ -309,7 +309,7 @@ struct SupportView: View {
                     }.disabled(tips.purchasing)
                 }
                 if !tips.loading && tips.products.isEmpty {
-                    Text("Tips aren’t available in this preview yet. Everything in Wishwell remains free.").foregroundStyle(.secondary)
+                    Text("Tips aren’t available right now. Everything in Wishwell stays free.").foregroundStyle(.secondary)
                     Button("Try again") { Task { await tips.load() } }
                 }
             }
