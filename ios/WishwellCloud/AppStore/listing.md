@@ -66,7 +66,7 @@ wishlist,gift,gifts,birthday,registry,wish list,present,ideas,family,christmas,w
 
 ## Screenshots
 
-`screenshots/iphone-6.9` (1320 × 2868) and `screenshots/ipad-13` (2064 × 2752), taken from demo mode with made-up people:
+`screenshots/iphone-6.9` (1320 × 2868), `screenshots/iphone-6.3` (1206 × 2622, the size App Store Connect requires, scaled from the 6.9" set) and `screenshots/ipad-13` (2064 × 2752), taken from demo mode with made-up people:
 
 1. My lists
 2. A public list of your own
