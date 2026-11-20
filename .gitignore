@@ -38,3 +38,5 @@
 /ios/**/.build/
 /ios/**/.swiftpm/
 **/.DS_Store
+
+.DS_Store
