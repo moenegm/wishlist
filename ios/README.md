@@ -1,6 +1,6 @@
 # Wishwell for iPhone and iPad
 
-The iCloud-only conversion is being developed separately in [`WishwellCloud`](WishwellCloud/README.md). The instructions below describe the existing Rails-connected app, retained during migration.
+The released app is [`WishwellCloud`](WishwellCloud/README.md). The instructions below describe the earlier Rails-connected app, kept for reference; the Rails service it used is retired.
 
 Native SwiftUI app, iOS/iPadOS 17+. Open `Wishwell/Wishwell.xcodeproj` and select the shared **Wishwell** scheme. The app and Rails backend intentionally share this repository.
 

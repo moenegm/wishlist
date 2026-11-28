@@ -26,7 +26,6 @@ struct SettingsView: View {
     @State private var framing: FramingImage?
     @State private var export = false
     @State private var importing = false
-    @State private var migration = false
     @State private var document = BackupDocument()
     @State private var message: String?
     @State private var turningOff = false
@@ -78,7 +77,6 @@ struct SettingsView: View {
                     } catch { message = error.localizedDescription }
                 }
                 Button("Import backup") { importing = true }
-                Button("Import website wishes") { migration = true }
             }
             Section {
                 NavigationLink { SupportView() } label: { Label("Support Wishwell", systemImage: "heart") }
@@ -130,7 +128,6 @@ struct SettingsView: View {
                     message = "Imported \(count) new wishlists. Existing lists were kept unchanged."
                 } catch { message = error.localizedDescription }
             }
-            .sheet(isPresented: $migration) { LegacyImportView() }
             .confirmationDialog("Turn off your public account?", isPresented: $turningOff, titleVisibility: .visible) {
                 Button("Turn off", role: .destructive) { Task { await social.perform {
                     try await social.removeProfile()

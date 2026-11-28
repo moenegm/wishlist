@@ -14,9 +14,7 @@ The iPhone/iPad app, rebuilt on iCloud. The Rails-backed app in `../Wishwell` st
 
 ## Included
 
-Lists/categories, wishes, moving wishes between lists, three store/link-price options (typed web addresses open as links and show as the store's site), reversible fulfillment, a fulfilled-items filter, local profile with a framed photo, a Light/Dark/Match phone appearance setting, JSON backup/export, duplicate-safe restore, and an opt-in read-only copy from the website. No account password is needed for normal use.
-
-Website import creates a temporary bearer session with the old service, copies only the signed-in user's lists/options/fulfilled flags, and attempts to revoke that session before returning. Passwords/tokens are not persisted. Previously imported list IDs are skipped to preserve local edits. Imported lists are private. The website is not modified or shut down.
+Lists/categories, wishes, moving wishes between lists, three store/link-price options (typed web addresses open as links and show as the store's site), reversible fulfillment, a fulfilled-items filter, local profile with a framed photo, a Light/Dark/Match phone appearance setting, JSON backup/export, and duplicate-safe restore. No account password is needed for normal use.
 
 ## Circle and gifts
 

@@ -1,6 +1,8 @@
 # Wishwell
 
-Live app: [https://wishwell-22rh.onrender.com](https://wishwell-22rh.onrender.com)
+Wishwell is an iPhone and iPad app: [Wishwell - Wish Lists on the App Store](https://apps.apple.com/app/wishwell-wish-lists/id6829148881). Its source is in [`ios/WishwellCloud`](ios/WishwellCloud/README.md).
+
+The Rails web app below is retired and kept for reference only; it is no longer hosted.
 
 Wishwell is a small, private-by-default place to keep wishlists and the things you are hoping for. Create an account, make a list, and save a wish with its price and where to find it. You can share individual lists on your public profile and follow people to keep their shared lists close for birthdays, holidays, and other occasions.
 
